@@ -5,7 +5,8 @@ const AppState = {
   lancamentos: [],
   cartoes: [],
   categorias: [],
-  saldos: [], // { id, nome, tipo, valor, meta, obs }
+  orcamentos: {}, // categoria -> limite mensal (number)
+  metas: [], // { id, nome, valorAlvo, valorAtual, prazo, dataCriacao }
   filtros: { tipo: '', categoria: '', dataInicio: '', dataFim: '', texto: '' },
   paginaAtual: 'dashboard',
 };
@@ -19,7 +20,8 @@ function salvarDados() {
   localStorage.setItem('fc_lancamentos', JSON.stringify(AppState.lancamentos));
   localStorage.setItem('fc_cartoes', JSON.stringify(AppState.cartoes));
   localStorage.setItem('fc_categorias', JSON.stringify(AppState.categorias));
-  localStorage.setItem('fc_saldos', JSON.stringify(AppState.saldos));
+  localStorage.setItem('fc_orcamentos', JSON.stringify(AppState.orcamentos));
+  localStorage.setItem('fc_metas', JSON.stringify(AppState.metas));
 }
 
 function carregarDados() {
@@ -27,7 +29,13 @@ function carregarDados() {
   AppState.cartoes = JSON.parse(localStorage.getItem('fc_cartoes') || '[]');
   const cats = JSON.parse(localStorage.getItem('fc_categorias'));
   AppState.categorias = (cats && cats.length) ? cats : [...CATEGORIAS_PADRAO];
-  AppState.saldos = JSON.parse(localStorage.getItem('fc_saldos') || '[]');
+  AppState.orcamentos = JSON.parse(localStorage.getItem('fc_orcamentos') || '{}');
+  const metas = JSON.parse(localStorage.getItem('fc_metas') || '[]');
+  // Garantir que todas as metas tenham valorAtual
+  AppState.metas = metas.map(m => ({
+    ...m,
+    valorAtual: m.valorAtual !== undefined ? m.valorAtual : 0
+  }));
 }
 
 // ==========================================
@@ -45,30 +53,6 @@ function formatarData(dataStr) {
   if (!dataStr) return '';
   const [ano, mes, dia] = dataStr.split('-');
   return `${dia}/${mes}/${ano}`;
-}
-
-function mesAno(dataStr) {
-  if (!dataStr) return '';
-  const [ano, mes] = dataStr.split('-');
-  return `${mes}/${ano}`;
-}
-
-function adicionarMeses(dataStr, n) {
-  const d = new Date(dataStr + 'T00:00:00');
-  d.setMonth(d.getMonth() + n);
-  return d.toISOString().split('T')[0];
-}
-
-function adicionarSemanas(dataStr, n) {
-  const d = new Date(dataStr + 'T00:00:00');
-  d.setDate(d.getDate() + 7 * n);
-  return d.toISOString().split('T')[0];
-}
-
-function adicionarAnos(dataStr, n) {
-  const d = new Date(dataStr + 'T00:00:00');
-  d.setFullYear(d.getFullYear() + n);
-  return d.toISOString().split('T')[0];
 }
 
 function dataHoje() {
@@ -89,6 +73,21 @@ function toast(msg, tipo = 'success') {
 }
 
 // ==========================================
+// NOTIFICAÇÕES (Lembretes)
+// ==========================================
+function pedirPermissaoNotificacao() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function enviarNotificacao(titulo, corpo) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(titulo, { body: corpo, icon: '💕' });
+  }
+}
+
+// ==========================================
 // NAVEGAÇÃO
 // ==========================================
 function navegarPara(pagina) {
@@ -102,19 +101,16 @@ function navegarPara(pagina) {
     cartoes: 'Cartões',
     faturas: 'Faturas',
     recorrentes: 'Recorrentes',
-    saldos: 'Saldos',
     projecao: 'Projeção',
-    categorias: 'Categorias'
+    categorias: 'Categorias',
+    metas: 'Metas'
   };
   document.getElementById('topbarTitle').textContent = tituloMap[pagina] || 'Dashboard';
-
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const pageEl = document.getElementById(`page-${pagina}`);
   if (pageEl) pageEl.classList.add('active');
-
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('overlay').classList.remove('active');
-
   atualizarPagina(pagina);
 }
 
@@ -125,10 +121,80 @@ function atualizarPagina(pagina) {
     case 'cartoes': atualizarCartoes(); break;
     case 'faturas': atualizarFaturas(); break;
     case 'recorrentes': atualizarRecorrentes(); break;
-    case 'saldos': atualizarSaldos(); break;
     case 'projecao': atualizarProjecao(); break;
     case 'categorias': atualizarCategorias(); break;
+    case 'metas': atualizarMetas(); break;
   }
+}
+
+// ==========================================
+// AGRUPAMENTO DE RECORRENTES
+// ==========================================
+function agruparRecorrentes(lista) {
+  const grupos = {};
+  const resultado = [];
+  const ordenada = [...lista].sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  for (const l of ordenada) {
+    if (l.recorrente && l.grupoId) {
+      if (!grupos[l.grupoId]) {
+        grupos[l.grupoId] = l;
+        resultado.push(l);
+      }
+    } else {
+      resultado.push(l);
+    }
+  }
+  return resultado;
+}
+
+function temFiltrosAtivos() {
+  const f = AppState.filtros;
+  return f.tipo || f.categoria || f.dataInicio || f.dataFim || f.texto;
+}
+
+// ==========================================
+// CÁLCULOS AUXILIARES
+// ==========================================
+function getGastosPorCategoria(mes) {
+  const resultado = {};
+  AppState.lancamentos
+    .filter(l => l.tipo === 'saida' && l.data && l.data.startsWith(mes))
+    .forEach(l => {
+      resultado[l.categoria] = (resultado[l.categoria] || 0) + l.valor;
+    });
+  return resultado;
+}
+
+function getSaldoAcumulado() {
+  let saldo = 0;
+  AppState.lancamentos.forEach(l => {
+    if (l.tipo === 'entrada') saldo += l.valor;
+    else saldo -= l.valor;
+  });
+  return saldo;
+}
+
+function getLimiteUtilizadoCartao(cartaoId) {
+  const grupos = {};
+  let total = 0;
+  AppState.lancamentos.forEach(l => {
+    if (l.cartaoId === cartaoId) {
+      if (l.ehParcela && l.grupoId) {
+        if (!grupos[l.grupoId]) {
+          const primeira = AppState.lancamentos.find(p => p.grupoId === l.grupoId && p.ehParcela);
+          if (primeira) {
+            grupos[l.grupoId] = primeira.valor * primeira.parcelas;
+          }
+        }
+      } else if (!l.ehParcela) {
+        total += l.valor;
+      }
+    }
+  });
+  for (const g in grupos) {
+    total += grupos[g];
+  }
+  return total;
 }
 
 // ==========================================
@@ -146,11 +212,7 @@ function atualizarDashboard() {
   });
   const saldo = entradas - saidas;
 
-  // Saldo atual considera também os saldos cadastrados
-  const totalSaldos = AppState.saldos.reduce((acc, s) => acc + s.valor, 0);
-  const saldoTotal = saldo + totalSaldos;
-
-  document.getElementById('saldoAtual').textContent = formatarMoeda(saldoTotal);
+  document.getElementById('saldoAtual').textContent = formatarMoeda(saldo);
   document.getElementById('saldoMes').textContent = `Mês ${nomeMes(mesAtual.split('-')[1])}`;
   document.getElementById('totalEntradas').textContent = formatarMoeda(entradas);
   document.getElementById('entradasMes').textContent = `Mês ${nomeMes(mesAtual.split('-')[1])}`;
@@ -161,6 +223,83 @@ function atualizarDashboard() {
   AppState.lancamentos.filter(l => l.cartaoId && l.data && l.data.startsWith(mesAtual)).forEach(l => totalFatura += l.valor);
   document.getElementById('totalFatura').textContent = formatarMoeda(totalFatura);
 
+  // --- Orçamento por categoria ---
+  const gastos = getGastosPorCategoria(mesAtual);
+  const orcContainer = document.getElementById('orcamentoProgresso');
+  let orcHtml = '';
+  let temOrcamento = false;
+  for (const cat in AppState.orcamentos) {
+    const limite = AppState.orcamentos[cat];
+    if (limite > 0) {
+      temOrcamento = true;
+      const gasto = gastos[cat] || 0;
+      const pct = Math.min(100, (gasto / limite) * 100);
+      let classe = 'ok';
+      if (pct >= 90) classe = 'danger';
+      else if (pct >= 70) classe = 'warn';
+      orcHtml += `
+        <div class="orcamento-item">
+          <div class="orcamento-cat">
+            <span>${cat}</span>
+            <span>${formatarMoeda(gasto)} / ${formatarMoeda(limite)}</span>
+          </div>
+          <div class="orcamento-bar-track">
+            <div class="orcamento-bar-fill ${classe}" style="width:${pct}%"></div>
+          </div>
+          ${pct >= 90 ? `<div class="orcamento-alerta">⚠️ Atenção! Gastos próximos ou acima do limite.</div>` : ''}
+        </div>
+      `;
+    }
+  }
+  orcContainer.innerHTML = temOrcamento ? orcHtml : '<div class="empty-state"><p>Nenhum orçamento definido. Vá em "Categorias" e defina limites.</p></div>';
+
+  // --- Metas (dashboard) ---
+  const metasContainer = document.getElementById('metasProgresso');
+  if (AppState.metas.length === 0) {
+    metasContainer.innerHTML = '<div class="empty-state"><p>Nenhuma meta criada. Clique em "Metas" no menu.</p></div>';
+  } else {
+    metasContainer.innerHTML = AppState.metas.map(m => {
+      const pct = Math.min(100, (m.valorAtual / m.valorAlvo) * 100);
+      return `
+        <div class="meta-card">
+          <div class="meta-nome">${m.nome}</div>
+          <div class="meta-valor">${formatarMoeda(m.valorAtual)} de ${formatarMoeda(m.valorAlvo)}</div>
+          <div class="meta-bar-track">
+            <div class="meta-bar-fill" style="width:${Math.max(0, pct)}%"></div>
+          </div>
+          <div class="meta-info">
+            <span>${Math.round(pct)}%</span>
+            <span>${m.prazo ? `Prazo: ${formatarData(m.prazo)}` : ''}</span>
+          </div>
+          <div class="meta-actions">
+            <button class="btn-icon" onclick="adicionarAporte('${m.id}')" title="Adicionar aporte">💰</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // --- Alertas de vencimento ---
+  const hojeNum = parseInt(hoje.split('-')[2]);
+  const alertDiv = document.getElementById('vencimentosAlert');
+  let alertHtml = '';
+  AppState.cartoes.forEach(c => {
+    const venc = c.vencimento;
+    let diff = venc - hojeNum;
+    if (diff < 0) diff += 30;
+    if (diff >= 0 && diff <= 5) {
+      const msg = `💳 ${c.nome} vence em ${diff === 0 ? 'hoje!' : `${diff} dias`}`;
+      alertHtml += `<div class="vencimento-alerta"><span class="emoji">⏰</span> ${msg}</div>`;
+      if (!window._notificados) window._notificados = {};
+      if (!window._notificados[c.id]) {
+        enviarNotificacao('Vencimento próximo', msg);
+        window._notificados[c.id] = true;
+      }
+    }
+  });
+  alertDiv.innerHTML = alertHtml || '';
+
+  // --- Gráficos e últimos lançamentos ---
   const porCategoria = {};
   AppState.lancamentos.filter(l => l.tipo === 'saida' && l.data && l.data.startsWith(mesAtual)).forEach(l => {
     porCategoria[l.categoria] = (porCategoria[l.categoria] || 0) + l.valor;
@@ -188,7 +327,8 @@ function atualizarDashboard() {
   });
   renderGraficoMensal(meses.map(m => nomeMes(m.split('-')[1])), entradasMensais, saidasMensais);
 
-  const ultimos = [...AppState.lancamentos].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 5);
+  let ultimos = [...AppState.lancamentos].sort((a, b) => (b.data || '').localeCompare(a.data || '')).slice(0, 20);
+  ultimos = agruparRecorrentes(ultimos).slice(0, 5);
   const container = document.getElementById('ultimosLancamentos');
   if (ultimos.length === 0) {
     container.innerHTML = '<div class="empty-state"><p>Nenhum lançamento recente</p></div>';
@@ -292,7 +432,10 @@ function getLancamentosFiltrados() {
 }
 
 function atualizarLancamentos() {
-  const lista = getLancamentosFiltrados();
+  let lista = getLancamentosFiltrados();
+  if (!temFiltrosAtivos()) {
+    lista = agruparRecorrentes(lista);
+  }
   const container = document.getElementById('listaLancamentos');
   if (lista.length === 0) {
     container.innerHTML = '<div class="empty-state"><p>Nenhum lançamento encontrado</p></div>';
@@ -317,7 +460,6 @@ function atualizarLancamentos() {
       </div>
     `;
   }).join('');
-
   preencherSelectCategoria('filtroCategoria', AppState.filtros.categoria);
 }
 
@@ -337,13 +479,9 @@ function atualizarCartoes() {
     container.innerHTML = '<div class="empty-state"><p>Nenhum cartão cadastrado</p></div>';
     return;
   }
-  const hoje = dataHoje();
-  const mesAtual = hoje.substring(0, 7);
   container.innerHTML = AppState.cartoes.map(c => {
-    const gastos = AppState.lancamentos
-      .filter(l => l.cartaoId === c.id && l.data && l.data.startsWith(mesAtual))
-      .reduce((s, l) => s + l.valor, 0);
-    const pct = c.limite > 0 ? Math.min(100, Math.round(gastos / c.limite * 100)) : 0;
+    const utilizado = getLimiteUtilizadoCartao(c.id);
+    const pct = c.limite > 0 ? Math.min(100, Math.round(utilizado / c.limite * 100)) : 0;
     return `
       <div class="cartao-card">
         <div class="cartao-nome">${c.nome}</div>
@@ -352,7 +490,7 @@ function atualizarCartoes() {
         </div>
         <div class="cartao-meta">
           <span>Limite: ${formatarMoeda(c.limite)}</span>
-          <span>Usado: ${formatarMoeda(gastos)} (${pct}%)</span>
+          <span>Usado: ${formatarMoeda(utilizado)} (${pct}%)</span>
         </div>
         <div class="cartao-meta" style="margin-top:.4rem;">
           <span>Vencimento: dia ${c.vencimento}</span>
@@ -475,139 +613,6 @@ function excluirGrupo(grupoId) {
 }
 
 // ==========================================
-// SALDOS, INVESTIMENTOS E CAIXINHAS
-// ==========================================
-function atualizarSaldos() {
-  const container = document.getElementById('listaSaldos');
-  if (AppState.saldos.length === 0) {
-    container.innerHTML = '<div class="empty-state"><p>Nenhum saldo cadastrado</p></div>';
-  } else {
-    container.innerHTML = AppState.saldos.map(s => {
-      const tipoIcon = s.tipo === 'conta' ? '🏦' :
-                        s.tipo === 'poupanca' ? '💰' :
-                        s.tipo === 'investimento' ? '📈' : '🎯';
-      const metaHtml = s.meta ? `<span class="saldo-meta">Meta: ${formatarMoeda(s.meta)}</span>` : '';
-      const progresso = s.meta && s.meta > 0 ? Math.min(100, Math.round((s.valor / s.meta) * 100)) : 0;
-      const barraProgresso = s.meta ? `
-        <div class="cartao-limite-bar" style="margin-top:6px;">
-          <div class="cartao-limite-fill" style="width:${progresso}%;background:linear-gradient(90deg, var(--teal-2), var(--teal-3));"></div>
-        </div>
-        <div class="cartao-meta" style="font-size:.7rem;color:var(--text-muted);">${progresso}% da meta</div>
-      ` : '';
-
-      return `
-        <div class="cartao-card" style="border-left:4px solid ${s.tipo === 'investimento' ? 'var(--teal-3)' : s.tipo === 'caixinha' ? 'var(--accent-amber)' : 'var(--teal-1)'};">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-            <span style="font-size:1.5rem;">${tipoIcon}</span>
-            <span class="cartao-nome" style="margin-bottom:0;">${s.nome}</span>
-          </div>
-          <div style="font-size:1.3rem;font-weight:700;color:var(--navy-1);">${formatarMoeda(s.valor)}</div>
-          <div style="font-size:.75rem;color:var(--text-secondary);text-transform:capitalize;">${s.tipo}</div>
-          ${metaHtml}
-          ${barraProgresso}
-          ${s.obs ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:6px;">${s.obs}</div>` : ''}
-          <div class="cartao-actions">
-            <button class="btn-icon" onclick="editarSaldo('${s.id}')" title="Editar">✏️</button>
-            <button class="btn-icon" onclick="excluirSaldo('${s.id}')" title="Excluir">🗑️</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // Atualiza totais
-  const totalContas = AppState.saldos.filter(s => s.tipo === 'conta' || s.tipo === 'poupanca').reduce((acc, s) => acc + s.valor, 0);
-  const totalInvestimentos = AppState.saldos.filter(s => s.tipo === 'investimento').reduce((acc, s) => acc + s.valor, 0);
-  const totalCaixinhas = AppState.saldos.filter(s => s.tipo === 'caixinha').reduce((acc, s) => acc + s.valor, 0);
-  const patrimonio = totalContas + totalInvestimentos + totalCaixinhas;
-
-  document.getElementById('totalContas').textContent = formatarMoeda(totalContas);
-  document.getElementById('totalInvestimentos').textContent = formatarMoeda(totalInvestimentos);
-  document.getElementById('totalCaixinhas').textContent = formatarMoeda(totalCaixinhas);
-  document.getElementById('patrimonioTotal').textContent = formatarMoeda(patrimonio);
-}
-
-function abrirModalSaldo(id = null) {
-  const modal = document.getElementById('modalSaldo');
-  modal.classList.add('active');
-  const titulo = document.getElementById('modalSaldoTitulo');
-  titulo.textContent = id ? 'Editar Saldo' : 'Adicionar Saldo';
-
-  if (id) {
-    const s = AppState.saldos.find(x => x.id === id);
-    if (!s) return;
-    document.getElementById('saldoId').value = s.id;
-    document.getElementById('saldoNome').value = s.nome;
-    document.getElementById('saldoTipo').value = s.tipo;
-    document.getElementById('saldoValor').value = s.valor;
-    document.getElementById('saldoMeta').value = s.meta || '';
-    document.getElementById('saldoObs').value = s.obs || '';
-  } else {
-    document.getElementById('saldoId').value = '';
-    document.getElementById('saldoNome').value = '';
-    document.getElementById('saldoTipo').value = 'conta';
-    document.getElementById('saldoValor').value = '';
-    document.getElementById('saldoMeta').value = '';
-    document.getElementById('saldoObs').value = '';
-  }
-  // Mostra/esconde campo meta conforme tipo
-  toggleMetaField();
-}
-
-function toggleMetaField() {
-  const tipo = document.getElementById('saldoTipo').value;
-  const grupoMeta = document.getElementById('grupoCaixinhaMeta');
-  if (tipo === 'caixinha') {
-    grupoMeta.style.display = 'block';
-  } else {
-    grupoMeta.style.display = 'none';
-  }
-}
-
-function salvarSaldo() {
-  const id = document.getElementById('saldoId').value;
-  const nome = document.getElementById('saldoNome').value.trim();
-  const tipo = document.getElementById('saldoTipo').value;
-  const valor = parseFloat(document.getElementById('saldoValor').value);
-  const meta = parseFloat(document.getElementById('saldoMeta').value) || null;
-  const obs = document.getElementById('saldoObs').value.trim();
-
-  if (!nome || isNaN(valor) || valor < 0) {
-    toast('Preencha todos os campos obrigatórios', 'error');
-    return;
-  }
-
-  if (id) {
-    const idx = AppState.saldos.findIndex(s => s.id === id);
-    if (idx >= 0) {
-      AppState.saldos[idx] = { ...AppState.saldos[idx], nome, tipo, valor, meta, obs };
-      toast('Saldo atualizado!');
-    }
-  } else {
-    AppState.saldos.push({ id: gerarId(), nome, tipo, valor, meta, obs });
-    toast('Saldo adicionado!');
-  }
-
-  salvarDados();
-  fecharModal('modalSaldo');
-  atualizarPagina('saldos');
-}
-
-function editarSaldo(id) {
-  abrirModalSaldo(id);
-}
-
-function excluirSaldo(id) {
-  const s = AppState.saldos.find(x => x.id === id);
-  if (!s) return;
-  if (!confirm(`Excluir "${s.nome}"?`)) return;
-  AppState.saldos = AppState.saldos.filter(x => x.id !== id);
-  salvarDados();
-  toast('Saldo excluído!');
-  atualizarPagina('saldos');
-}
-
-// ==========================================
 // PROJEÇÃO
 // ==========================================
 function atualizarProjecao() {
@@ -634,9 +639,6 @@ function atualizarProjecao() {
     if (l.tipo === 'entrada') saldoAcumulado += l.valor;
     else saldoAcumulado -= l.valor;
   });
-  // Adiciona saldos iniciais ao saldo acumulado
-  const totalSaldos = AppState.saldos.reduce((acc, s) => acc + s.valor, 0);
-  saldoAcumulado += totalSaldos;
 
   const container = document.getElementById('tabelaProjecao');
   container.innerHTML = dados.map(d => {
@@ -657,19 +659,39 @@ function atualizarProjecao() {
 }
 
 // ==========================================
-// CATEGORIAS
+// CATEGORIAS (com orçamento)
 // ==========================================
 function atualizarCategorias() {
   const container = document.getElementById('listaCategorias');
-  container.innerHTML = AppState.categorias.map(c => `
-    <div class="categoria-card">
-      <div class="cat-icone">📌</div>
-      <div class="cat-info">
-        <div class="cat-nome">${c}</div>
+  container.innerHTML = AppState.categorias.map(c => {
+    const limite = AppState.orcamentos[c] || '';
+    return `
+      <div class="categoria-card">
+        <div class="cat-icone">📌</div>
+        <div class="cat-info">
+          <div class="cat-nome">${c}</div>
+          <div style="display:flex;align-items:center;gap:.5rem;margin-top:.2rem;">
+            <span style="font-size:.7rem;color:var(--text-muted);">Limite mensal:</span>
+            <input type="number" class="cat-limite-input" value="${limite}" step="0.01" min="0"
+              data-categoria="${c}" onchange="salvarLimiteCategoria(this)" placeholder="R$">
+          </div>
+        </div>
+        <button class="btn-icon cat-del" onclick="excluirCategoria('${c}')" title="Excluir">🗑️</button>
       </div>
-      <button class="btn-icon cat-del" onclick="excluirCategoria('${c}')" title="Excluir">🗑️</button>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+}
+
+function salvarLimiteCategoria(input) {
+  const categoria = input.dataset.categoria;
+  const valor = parseFloat(input.value) || 0;
+  if (valor === 0) {
+    delete AppState.orcamentos[categoria];
+  } else {
+    AppState.orcamentos[categoria] = valor;
+  }
+  salvarDados();
+  toast(`Limite de ${categoria} atualizado!`);
 }
 
 function adicionarCategoria() {
@@ -691,9 +713,120 @@ function adicionarCategoria() {
 function excluirCategoria(nome) {
   if (!confirm(`Excluir categoria "${nome}"?`)) return;
   AppState.categorias = AppState.categorias.filter(c => c !== nome);
+  delete AppState.orcamentos[nome];
   salvarDados();
   toast('Categoria excluída!');
   atualizarCategorias();
+}
+
+// ==========================================
+// METAS (com valorAtual)
+// ==========================================
+function atualizarMetas() {
+  const container = document.getElementById('listaMetas');
+  if (AppState.metas.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>Nenhuma meta criada. Clique em "+ Nova Meta".</p></div>';
+    return;
+  }
+  container.innerHTML = AppState.metas.map(m => {
+    const pct = Math.min(100, (m.valorAtual / m.valorAlvo) * 100);
+    const faltam = Math.max(0, m.valorAlvo - m.valorAtual);
+    return `
+      <div class="meta-card">
+        <div class="meta-nome">${m.nome}</div>
+        <div class="meta-valor">${formatarMoeda(m.valorAtual)} de ${formatarMoeda(m.valorAlvo)}</div>
+        <div class="meta-bar-track">
+          <div class="meta-bar-fill" style="width:${Math.max(0, pct)}%"></div>
+        </div>
+        <div class="meta-info">
+          <span>${Math.round(pct)}%</span>
+          <span>${m.prazo ? `Prazo: ${formatarData(m.prazo)}` : 'Sem prazo'}</span>
+          <span style="font-family:var(--mono);">Faltam ${formatarMoeda(faltam)}</span>
+        </div>
+        <div class="meta-actions">
+          <button class="btn-icon" onclick="adicionarAporte('${m.id}')" title="Adicionar aporte">💰</button>
+          <button class="btn-icon" onclick="excluirMeta('${m.id}')" title="Excluir meta">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function adicionarAporte(id) {
+  const meta = AppState.metas.find(m => m.id === id);
+  if (!meta) return;
+  const valorStr = prompt(`Quanto deseja aportar para "${meta.nome}"?`, '0,00');
+  if (valorStr === null) return;
+  const valor = parseFloat(valorStr.replace(',', '.')) || 0;
+  if (valor <= 0) {
+    toast('Valor inválido', 'error');
+    return;
+  }
+  meta.valorAtual = (meta.valorAtual || 0) + valor;
+  salvarDados();
+  toast(`Aporte de ${formatarMoeda(valor)} adicionado!`);
+  atualizarPagina(AppState.paginaAtual);
+  if (AppState.paginaAtual === 'dashboard') atualizarDashboard();
+}
+
+function abrirModalMeta(id = null) {
+  const modal = document.getElementById('modalMeta');
+  modal.classList.add('active');
+  document.getElementById('modalMetaTitulo').textContent = id ? 'Editar Meta' : 'Nova Meta';
+  document.getElementById('metaId').value = id || '';
+  if (id) {
+    const m = AppState.metas.find(x => x.id === id);
+    if (m) {
+      document.getElementById('metaNome').value = m.nome;
+      document.getElementById('metaValor').value = m.valorAlvo;
+      document.getElementById('metaPrazo').value = m.prazo || '';
+    }
+  } else {
+    document.getElementById('metaNome').value = '';
+    document.getElementById('metaValor').value = '';
+    document.getElementById('metaPrazo').value = '';
+  }
+}
+
+function salvarMeta() {
+  const id = document.getElementById('metaId').value;
+  const nome = document.getElementById('metaNome').value.trim();
+  const valorAlvo = parseFloat(document.getElementById('metaValor').value);
+  const prazo = document.getElementById('metaPrazo').value || null;
+
+  if (!nome || isNaN(valorAlvo) || valorAlvo <= 0) {
+    toast('Preencha todos os campos obrigatórios', 'error');
+    return;
+  }
+
+  if (id) {
+    const idx = AppState.metas.findIndex(m => m.id === id);
+    if (idx >= 0) {
+      AppState.metas[idx] = { ...AppState.metas[idx], nome, valorAlvo, prazo };
+      toast('Meta atualizada!');
+    }
+  } else {
+    AppState.metas.push({
+      id: gerarId(),
+      nome,
+      valorAlvo,
+      prazo,
+      valorAtual: 0,
+      dataCriacao: dataHoje()
+    });
+    toast('Meta criada!');
+  }
+  salvarDados();
+  fecharModal('modalMeta');
+  atualizarPagina('metas');
+}
+
+function excluirMeta(id) {
+  if (!confirm('Excluir esta meta?')) return;
+  AppState.metas = AppState.metas.filter(m => m.id !== id);
+  salvarDados();
+  toast('Meta excluída!');
+  atualizarPagina('metas');
 }
 
 // ==========================================
@@ -749,9 +882,7 @@ function abrirModalRecorrente(id = null) {
   modal.classList.add('active');
   const titulo = document.getElementById('modalRecorrenteTitulo');
   titulo.textContent = id ? 'Editar Recorrente' : 'Novo Lançamento Recorrente';
-
   preencherSelectCategoria('recCategoria', '');
-
   if (id) {
     const grupo = AppState.lancamentos.find(l => l.grupoId === id && l.recorrente);
     if (!grupo) return;
@@ -843,7 +974,7 @@ function salvarLancamento() {
 }
 
 // ==========================================
-// SALVAR RECORRENTE
+// SALVAR RECORRENTE (limite 60 ocorrências)
 // ==========================================
 function salvarRecorrente() {
   const id = document.getElementById('recorrenteId').value;
@@ -872,7 +1003,7 @@ function salvarRecorrente() {
   const grupoId = gerarId();
   let dataAtual = dataInicio;
   let count = 0;
-  const maxIter = 200;
+  const maxIter = 60; // <-- AGORA O LIMITE É 60 (antes era 200)
 
   while (dataAtual <= (dataFim || '2099-12-31') && count < maxIter) {
     AppState.lancamentos.push({
@@ -896,7 +1027,7 @@ function salvarRecorrente() {
   }
 
   if (count === maxIter) {
-    toast('Limite de 200 ocorrências atingido', 'error');
+    toast(`Limite de ${maxIter} ocorrências atingido`, 'error');
   } else {
     toast(`${count} lançamentos recorrentes criados!`);
   }
@@ -1008,7 +1139,8 @@ function exportarJSON() {
     lancamentos: AppState.lancamentos,
     cartoes: AppState.cartoes,
     categorias: AppState.categorias,
-    saldos: AppState.saldos,
+    orcamentos: AppState.orcamentos,
+    metas: AppState.metas,
     exportadoEm: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
@@ -1040,10 +1172,32 @@ function downloadBlob(blob, nome) {
 }
 
 // ==========================================
+// ADICIONAR MESES, SEMANAS, ANOS
+// ==========================================
+function adicionarMeses(dataStr, n) {
+  const d = new Date(dataStr + 'T00:00:00');
+  d.setMonth(d.getMonth() + n);
+  return d.toISOString().split('T')[0];
+}
+
+function adicionarSemanas(dataStr, n) {
+  const d = new Date(dataStr + 'T00:00:00');
+  d.setDate(d.getDate() + 7 * n);
+  return d.toISOString().split('T')[0];
+}
+
+function adicionarAnos(dataStr, n) {
+  const d = new Date(dataStr + 'T00:00:00');
+  d.setFullYear(d.getFullYear() + n);
+  return d.toISOString().split('T')[0];
+}
+
+// ==========================================
 // INICIALIZAÇÃO
 // ==========================================
 function inicializar() {
   carregarDados();
+  pedirPermissaoNotificacao();
 
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => navegarPara(el.dataset.page));
@@ -1077,7 +1231,7 @@ function inicializar() {
     document.getElementById('catNome').value = '';
     document.getElementById('modalCategoria').classList.add('active');
   });
-  document.getElementById('btnNovoSaldo').addEventListener('click', () => abrirModalSaldo());
+  document.getElementById('btnNovaMeta').addEventListener('click', () => abrirModalMeta());
 
   document.querySelectorAll('.modal-close, [data-modal]').forEach(el => {
     el.addEventListener('click', function() {
@@ -1095,10 +1249,7 @@ function inicializar() {
   document.getElementById('btnSalvarCartao').addEventListener('click', salvarCartao);
   document.getElementById('btnSalvarCategoria').addEventListener('click', adicionarCategoria);
   document.getElementById('btnSalvarRecorrente').addEventListener('click', salvarRecorrente);
-  document.getElementById('btnSalvarSaldo').addEventListener('click', salvarSaldo);
-
-  // Quando trocar o tipo de saldo, atualizar campo meta
-  document.getElementById('saldoTipo').addEventListener('change', toggleMetaField);
+  document.getElementById('btnSalvarMeta').addEventListener('click', salvarMeta);
 
   document.getElementById('filtroBusca').addEventListener('input', function() {
     aplicarFiltro('texto', this.value);

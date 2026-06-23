@@ -6,6 +6,7 @@
   <title>Finanças da Talita 💕</title>
   <link rel="stylesheet" href="style.css" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -13,8 +14,8 @@
 <!-- SIDEBAR -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand">
-    <span class="brand-icon">₿</span>
-    <span class="brand-name">Finanças Talitissima 💕</span>
+    <span class="brand-icon">💕</span>
+    <span class="brand-name">Finanças da Talita</span>
   </div>
   <nav class="sidebar-nav">
     <button class="nav-item active" data-page="dashboard">
@@ -37,10 +38,6 @@
       <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
       Recorrentes
     </button>
-    <button class="nav-item" data-page="saldos">
-      <svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
-      Saldos
-    </button>
     <button class="nav-item" data-page="projecao">
       <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
       Projeção
@@ -48,6 +45,10 @@
     <button class="nav-item" data-page="categorias">
       <svg viewBox="0 0 24 24"><path d="M12 2l-5.5 9h11L12 2zm0 3.84L13.93 9h-3.87L12 5.84zM17.5 13c-2.49 0-4.5 2.01-4.5 4.5S15.01 22 17.5 22s4.5-2.01 4.5-4.5S19.99 13 17.5 13zm0 7c-1.38 0-2.5-1.12-2.5-2.5S16.12 15 17.5 15s2.5 1.12 2.5 2.5S18.88 20 17.5 20zM3 21.5h8v-8H3v8zm2-6h4v4H5v-4z"/></svg>
       Categorias
+    </button>
+    <button class="nav-item" data-page="metas">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Metas
     </button>
   </nav>
   <button class="sidebar-toggle-mobile" id="closeSidebar">✕</button>
@@ -70,6 +71,8 @@
 
   <!-- PAGES -->
   <div class="page active" id="page-dashboard">
+
+    <!-- Cards de resumo -->
     <div class="summary-cards">
       <div class="card card-balance">
         <div class="card-label">Saldo Atual</div>
@@ -93,6 +96,18 @@
       </div>
     </div>
 
+    <!-- Alertas de vencimento -->
+    <div id="vencimentosAlert" style="margin-bottom: 1.5rem;"></div>
+
+    <!-- Orçamento por categoria -->
+    <div class="section-title">Orçamento por Categoria (mês atual)</div>
+    <div id="orcamentoProgresso" class="orcamento-grid" style="margin-bottom: 1.75rem;"></div>
+
+    <!-- Metas -->
+    <div class="section-title">Minhas Metas</div>
+    <div id="metasProgresso" class="metas-grid" style="margin-bottom: 1.75rem;"></div>
+
+    <!-- Gráficos -->
     <div class="charts-row">
       <div class="chart-box">
         <div class="chart-title">Gastos por Categoria</div>
@@ -104,6 +119,7 @@
       </div>
     </div>
 
+    <!-- Últimos lançamentos -->
     <div class="section-title">Últimos Lançamentos</div>
     <div id="ultimosLancamentos" class="lancamentos-list"></div>
   </div>
@@ -117,7 +133,7 @@
         <option value="entrada">Entrada</option>
         <option value="saida">Saída</option>
       </select>
-      <select id="filtroCategoria" class="input-filter"></select>
+      <select id="filtroCategoria" class="input-filter" id="filtroCategoria"></select>
       <input type="date" id="filtroDataInicio" class="input-filter">
       <input type="date" id="filtroDataFim" class="input-filter">
       <button class="btn btn-ghost" id="btnLimparFiltros">Limpar Filtros</button>
@@ -154,37 +170,6 @@
     <div id="listaRecorrentes" class="lancamentos-list"></div>
   </div>
 
-  <!-- PAGE SALDOS -->
-  <div class="page" id="page-saldos">
-    <div class="page-header-row">
-      <div class="section-title" style="margin:0">Saldos, Investimentos e Caixinhas</div>
-      <button class="btn btn-primary" id="btnNovoSaldo">+ Adicionar Saldo</button>
-    </div>
-
-    <!-- Resumo -->
-    <div class="summary-cards" style="grid-template-columns: repeat(auto-fit, minmax(180px,1fr));">
-      <div class="card" style="border-left:4px solid var(--teal-1);">
-        <div class="card-label">Total em Contas</div>
-        <div class="card-value" id="totalContas" style="color:var(--teal-1);">R$ 0,00</div>
-      </div>
-      <div class="card" style="border-left:4px solid var(--teal-3);">
-        <div class="card-label">Total em Investimentos</div>
-        <div class="card-value" id="totalInvestimentos" style="color:var(--teal-3);">R$ 0,00</div>
-      </div>
-      <div class="card" style="border-left:4px solid var(--accent-amber);">
-        <div class="card-label">Total em Caixinhas</div>
-        <div class="card-value" id="totalCaixinhas" style="color:var(--accent-amber);">R$ 0,00</div>
-      </div>
-      <div class="card" style="border-left:4px solid var(--navy-1);">
-        <div class="card-label">Patrimônio Total</div>
-        <div class="card-value" id="patrimonioTotal" style="color:var(--navy-1);">R$ 0,00</div>
-      </div>
-    </div>
-
-    <!-- Lista de saldos -->
-    <div id="listaSaldos" class="saldos-grid"></div>
-  </div>
-
   <!-- PAGE PROJEÇÃO -->
   <div class="page" id="page-projecao">
     <div class="filters-bar">
@@ -200,10 +185,19 @@
   <!-- PAGE CATEGORIAS -->
   <div class="page" id="page-categorias">
     <div class="page-header-row">
-      <div class="section-title" style="margin:0">Categorias</div>
+      <div class="section-title" style="margin:0">Categorias e Orçamentos</div>
       <button class="btn btn-primary" id="btnNovaCategoria">+ Nova Categoria</button>
     </div>
     <div id="listaCategorias" class="categorias-grid"></div>
+  </div>
+
+  <!-- PAGE METAS -->
+  <div class="page" id="page-metas">
+    <div class="page-header-row">
+      <div class="section-title" style="margin:0">Minhas Metas</div>
+      <button class="btn btn-primary" id="btnNovaMeta">+ Nova Meta</button>
+    </div>
+    <div id="listaMetas" class="metas-grid"></div>
   </div>
 </main>
 
@@ -386,50 +380,6 @@
   </div>
 </div>
 
-<!-- Modal Saldo -->
-<div class="modal-overlay" id="modalSaldo">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="modalSaldoTitulo">Novo Saldo</h2>
-      <button class="modal-close" data-modal="modalSaldo">✕</button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="saldoId">
-      <div class="form-group">
-        <label>Nome *</label>
-        <input type="text" id="saldoNome" class="input" placeholder="Ex: Conta Corrente, Poupança, Ações, Caixinha Viagem...">
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Tipo *</label>
-          <select id="saldoTipo" class="input">
-            <option value="conta">Conta Corrente</option>
-            <option value="poupanca">Poupança</option>
-            <option value="investimento">Investimento</option>
-            <option value="caixinha">Caixinha</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Saldo Atual (R$) *</label>
-          <input type="number" id="saldoValor" class="input" placeholder="0,00" step="0.01" min="0">
-        </div>
-      </div>
-      <div class="form-group" id="grupoCaixinhaMeta" style="display:none;">
-        <label>Meta (R$) (opcional)</label>
-        <input type="number" id="saldoMeta" class="input" placeholder="0,00" step="0.01" min="0">
-      </div>
-      <div class="form-group">
-        <label>Observações</label>
-        <textarea id="saldoObs" class="input" rows="2" placeholder="Opcional..."></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-modal="modalSaldo">Cancelar</button>
-      <button class="btn btn-primary" id="btnSalvarSaldo">Salvar</button>
-    </div>
-  </div>
-</div>
-
 <!-- Modal Categoria -->
 <div class="modal-overlay" id="modalCategoria">
   <div class="modal modal-sm">
@@ -450,6 +400,37 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" data-modal="modalCategoria">Cancelar</button>
       <button class="btn btn-primary" id="btnSalvarCategoria">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Meta -->
+<div class="modal-overlay" id="modalMeta">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalMetaTitulo">Nova Meta</h2>
+      <button class="modal-close" data-modal="modalMeta">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="metaId">
+      <div class="form-group">
+        <label>Nome da Meta *</label>
+        <input type="text" id="metaNome" class="input" placeholder="Ex: Viagem para a praia">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Valor Alvo (R$) *</label>
+          <input type="number" id="metaValor" class="input" placeholder="5000" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Prazo (opcional)</label>
+          <input type="date" id="metaPrazo" class="input">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modalMeta">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarMeta">Salvar</button>
     </div>
   </div>
 </div>
