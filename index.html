@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinançasPessoais</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">₿</span>
+    <span class="brand-name">Finanças</span>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-page="dashboard">
+      <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-item" data-page="lancamentos">
+      <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+      Lançamentos
+    </button>
+    <button class="nav-item" data-page="cartoes">
+      <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+      Cartões
+    </button>
+    <button class="nav-item" data-page="faturas">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+      Faturas
+    </button>
+    <button class="nav-item" data-page="recorrentes">
+      <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+      Recorrentes
+    </button>
+    <button class="nav-item" data-page="saldos">
+      <svg viewBox="0 0 24 24"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+      Saldos
+    </button>
+    <button class="nav-item" data-page="projecao">
+      <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
+      Projeção
+    </button>
+    <button class="nav-item" data-page="categorias">
+      <svg viewBox="0 0 24 24"><path d="M12 2l-5.5 9h11L12 2zm0 3.84L13.93 9h-3.87L12 5.84zM17.5 13c-2.49 0-4.5 2.01-4.5 4.5S15.01 22 17.5 22s4.5-2.01 4.5-4.5S19.99 13 17.5 13zm0 7c-1.38 0-2.5-1.12-2.5-2.5S16.12 15 17.5 15s2.5 1.12 2.5 2.5S18.88 20 17.5 20zM3 21.5h8v-8H3v8zm2-6h4v4H5v-4z"/></svg>
+      Categorias
+    </button>
+  </nav>
+  <button class="sidebar-toggle-mobile" id="closeSidebar">✕</button>
+</aside>
+
+<!-- OVERLAY MOBILE -->
+<div class="overlay" id="overlay"></div>
+
+<!-- MAIN -->
+<main class="main" id="main">
+  <header class="topbar">
+    <button class="menu-btn" id="menuBtn">
+      <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+    </button>
+    <span class="topbar-title" id="topbarTitle">Dashboard</span>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" id="btnNovoLancamento">+ Novo Lançamento</button>
+    </div>
+  </header>
+
+  <!-- PAGES -->
+  <div class="page active" id="page-dashboard">
+    <div class="summary-cards">
+      <div class="card card-balance">
+        <div class="card-label">Saldo Atual</div>
+        <div class="card-value" id="saldoAtual">R$ 0,00</div>
+        <div class="card-sub" id="saldoMes">Mês atual</div>
+      </div>
+      <div class="card card-income">
+        <div class="card-label">Entradas</div>
+        <div class="card-value" id="totalEntradas">R$ 0,00</div>
+        <div class="card-sub" id="entradasMes">Este mês</div>
+      </div>
+      <div class="card card-expense">
+        <div class="card-label">Saídas</div>
+        <div class="card-value" id="totalSaidas">R$ 0,00</div>
+        <div class="card-sub" id="saidasMes">Este mês</div>
+      </div>
+      <div class="card card-card">
+        <div class="card-label">Fatura Cartão</div>
+        <div class="card-value" id="totalFatura">R$ 0,00</div>
+        <div class="card-sub">Fatura atual</div>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-box">
+        <div class="chart-title">Gastos por Categoria</div>
+        <canvas id="chartCategorias" height="220"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Entradas × Saídas (últimos 6 meses)</div>
+        <canvas id="chartMensal" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="section-title">Últimos Lançamentos</div>
+    <div id="ultimosLancamentos" class="lancamentos-list"></div>
+  </div>
+
+  <!-- PAGE LANÇAMENTOS -->
+  <div class="page" id="page-lancamentos">
+    <div class="filters-bar">
+      <input type="text" id="filtroBusca" class="input-filter" placeholder="🔍 Buscar...">
+      <select id="filtroTipo" class="input-filter">
+        <option value="">Todos os tipos</option>
+        <option value="entrada">Entrada</option>
+        <option value="saida">Saída</option>
+      </select>
+      <select id="filtroCategoria" class="input-filter"></select>
+      <input type="date" id="filtroDataInicio" class="input-filter">
+      <input type="date" id="filtroDataFim" class="input-filter">
+      <button class="btn btn-ghost" id="btnLimparFiltros">Limpar Filtros</button>
+      <button class="btn btn-outline" id="btnExportar">⬇ Exportar</button>
+    </div>
+    <div id="listaLancamentos" class="lancamentos-list"></div>
+  </div>
+
+  <!-- PAGE CARTÕES -->
+  <div class="page" id="page-cartoes">
+    <div class="page-header-row">
+      <div class="section-title" style="margin:0">Meus Cartões</div>
+      <button class="btn btn-primary" id="btnNovoCartao">+ Novo Cartão</button>
+    </div>
+    <div id="listaCartoes" class="cartoes-grid"></div>
+  </div>
+
+  <!-- PAGE FATURAS -->
+  <div class="page" id="page-faturas">
+    <div class="filters-bar">
+      <select id="filtroCartaoFatura" class="input-filter"></select>
+      <select id="filtroMesFatura" class="input-filter"></select>
+    </div>
+    <div id="resumoFatura" class="fatura-resumo"></div>
+    <div id="listaFatura" class="lancamentos-list"></div>
+  </div>
+
+  <!-- PAGE RECORRENTES -->
+  <div class="page" id="page-recorrentes">
+    <div class="page-header-row">
+      <div class="section-title" style="margin:0">Lançamentos Recorrentes</div>
+      <button class="btn btn-primary" id="btnNovoRecorrente">+ Novo Recorrente</button>
+    </div>
+    <div id="listaRecorrentes" class="lancamentos-list"></div>
+  </div>
+
+  <!-- PAGE SALDOS -->
+  <div class="page" id="page-saldos">
+    <div class="page-header-row">
+      <div class="section-title" style="margin:0">Saldos, Investimentos e Caixinhas</div>
+      <button class="btn btn-primary" id="btnNovoSaldo">+ Adicionar Saldo</button>
+    </div>
+
+    <!-- Resumo -->
+    <div class="summary-cards" style="grid-template-columns: repeat(auto-fit, minmax(180px,1fr));">
+      <div class="card" style="border-left:4px solid var(--teal-1);">
+        <div class="card-label">Total em Contas</div>
+        <div class="card-value" id="totalContas" style="color:var(--teal-1);">R$ 0,00</div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--teal-3);">
+        <div class="card-label">Total em Investimentos</div>
+        <div class="card-value" id="totalInvestimentos" style="color:var(--teal-3);">R$ 0,00</div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--accent-amber);">
+        <div class="card-label">Total em Caixinhas</div>
+        <div class="card-value" id="totalCaixinhas" style="color:var(--accent-amber);">R$ 0,00</div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--navy-1);">
+        <div class="card-label">Patrimônio Total</div>
+        <div class="card-value" id="patrimonioTotal" style="color:var(--navy-1);">R$ 0,00</div>
+      </div>
+    </div>
+
+    <!-- Lista de saldos -->
+    <div id="listaSaldos" class="saldos-grid"></div>
+  </div>
+
+  <!-- PAGE PROJEÇÃO -->
+  <div class="page" id="page-projecao">
+    <div class="filters-bar">
+      <select id="filtroMesesProjecao" class="input-filter">
+        <option value="3">Próximos 3 meses</option>
+        <option value="6" selected>Próximos 6 meses</option>
+        <option value="12">Próximos 12 meses</option>
+      </select>
+    </div>
+    <div id="tabelaProjecao" class="projecao-grid"></div>
+  </div>
+
+  <!-- PAGE CATEGORIAS -->
+  <div class="page" id="page-categorias">
+    <div class="page-header-row">
+      <div class="section-title" style="margin:0">Categorias</div>
+      <button class="btn btn-primary" id="btnNovaCategoria">+ Nova Categoria</button>
+    </div>
+    <div id="listaCategorias" class="categorias-grid"></div>
+  </div>
+</main>
+
+<!-- MODAIS -->
+
+<!-- Modal Lançamento -->
+<div class="modal-overlay" id="modalLancamento">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalLancamentoTitulo">Novo Lançamento</h2>
+      <button class="modal-close" data-modal="modalLancamento">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="lancamentoId">
+      <div class="form-group">
+        <label>Descrição *</label>
+        <input type="text" id="lancDescricao" class="input" placeholder="Ex: Supermercado">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Valor *</label>
+          <input type="number" id="lancValor" class="input" placeholder="0,00" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Tipo *</label>
+          <select id="lancTipo" class="input">
+            <option value="saida">Saída</option>
+            <option value="entrada">Entrada</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria *</label>
+          <select id="lancCategoria" class="input"></select>
+        </div>
+        <div class="form-group">
+          <label>Data *</label>
+          <input type="date" id="lancData" class="input">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="lancCartaoCheck"> Pago no cartão de crédito
+        </label>
+      </div>
+      <div id="cartaoFields" style="display:none">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cartão</label>
+            <select id="lancCartao" class="input"></select>
+          </div>
+          <div class="form-group">
+            <label>Parcelamento</label>
+            <select id="lancParcelas" class="input">
+              <option value="1">À vista (1x)</option>
+              <option value="2">2x</option>
+              <option value="3">3x</option>
+              <option value="4">4x</option>
+              <option value="5">5x</option>
+              <option value="6">6x</option>
+              <option value="7">7x</option>
+              <option value="8">8x</option>
+              <option value="9">9x</option>
+              <option value="10">10x</option>
+              <option value="11">11x</option>
+              <option value="12">12x</option>
+              <option value="18">18x</option>
+              <option value="24">24x</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="lancObs" class="input" rows="2" placeholder="Opcional..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modalLancamento">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarLancamento">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Cartão -->
+<div class="modal-overlay" id="modalCartao">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalCartaoTitulo">Novo Cartão</h2>
+      <button class="modal-close" data-modal="modalCartao">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cartaoId">
+      <div class="form-group">
+        <label>Nome do Cartão *</label>
+        <input type="text" id="cartaoNome" class="input" placeholder="Ex: Nubank, Itaú Platinum">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Limite (R$)</label>
+          <input type="number" id="cartaoLimite" class="input" placeholder="5000" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Dia de Vencimento</label>
+          <input type="number" id="cartaoVencimento" class="input" placeholder="10" min="1" max="31">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Dia de Fechamento</label>
+        <input type="number" id="cartaoFechamento" class="input" placeholder="3" min="1" max="31">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modalCartao">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarCartao">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Recorrente -->
+<div class="modal-overlay" id="modalRecorrente">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalRecorrenteTitulo">Novo Lançamento Recorrente</h2>
+      <button class="modal-close" data-modal="modalRecorrente">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="recorrenteId">
+      <div class="form-group">
+        <label>Descrição *</label>
+        <input type="text" id="recDescricao" class="input" placeholder="Ex: Aluguel, Netflix...">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Valor *</label>
+          <input type="number" id="recValor" class="input" placeholder="0,00" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Tipo *</label>
+          <select id="recTipo" class="input">
+            <option value="saida">Saída</option>
+            <option value="entrada">Entrada</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Categoria *</label>
+          <select id="recCategoria" class="input"></select>
+        </div>
+        <div class="form-group">
+          <label>Recorrência *</label>
+          <select id="recFrequencia" class="input">
+            <option value="mensal">Mensal</option>
+            <option value="semanal">Semanal</option>
+            <option value="anual">Anual</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data de Início *</label>
+          <input type="date" id="recDataInicio" class="input">
+        </div>
+        <div class="form-group">
+          <label>Data de Fim (opcional)</label>
+          <input type="date" id="recDataFim" class="input">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="recObs" class="input" rows="2" placeholder="Opcional..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modalRecorrente">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarRecorrente">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Saldo -->
+<div class="modal-overlay" id="modalSaldo">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalSaldoTitulo">Novo Saldo</h2>
+      <button class="modal-close" data-modal="modalSaldo">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="saldoId">
+      <div class="form-group">
+        <label>Nome *</label>
+        <input type="text" id="saldoNome" class="input" placeholder="Ex: Conta Corrente, Poupança, Ações, Caixinha Viagem...">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipo *</label>
+          <select id="saldoTipo" class="input">
+            <option value="conta">Conta Corrente</option>
+            <option value="poupanca">Poupança</option>
+            <option value="investimento">Investimento</option>
+            <option value="caixinha">Caixinha</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Saldo Atual (R$) *</label>
+          <input type="number" id="saldoValor" class="input" placeholder="0,00" step="0.01" min="0">
+        </div>
+      </div>
+      <div class="form-group" id="grupoCaixinhaMeta" style="display:none;">
+        <label>Meta (R$) (opcional)</label>
+        <input type="number" id="saldoMeta" class="input" placeholder="0,00" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="saldoObs" class="input" rows="2" placeholder="Opcional..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modalSaldo">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarSaldo">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Categoria -->
+<div class="modal-overlay" id="modalCategoria">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Nova Categoria</h2>
+      <button class="modal-close" data-modal="modalCategoria">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nome *</label>
+        <input type="text" id="catNome" class="input" placeholder="Ex: Lazer, Pets...">
+      </div>
+      <div class="form-group">
+        <label>Ícone (emoji)</label>
+        <input type="text" id="catIcone" class="input" placeholder="🎯" maxlength="2">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modalCategoria">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarCategoria">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Confirm Dialog -->
+<div class="modal-overlay" id="modalConfirm">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Confirmar Exclusão</h2>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMsg">Tem certeza que deseja excluir este item?</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="confirmCancel">Cancelar</button>
+      <button class="btn btn-danger" id="confirmOk">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
