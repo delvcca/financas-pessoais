@@ -369,7 +369,11 @@ function renderGraficoCategorias(labels, data) {
       labels: labels,
       datasets: [{
         data: data,
-        backgroundColor: ['#10B981', '#F87171', '#60A5FA', '#FBBF24', '#A78BFA', '#34D399', '#F472B6', '#F59E0B', '#6EE7B7', '#93C5FD'],
+backgroundColor: [
+  '#12355F', '#1A4878', '#186B8D', '#1A8CA5', '#22B4BF',
+  '#5FE9FC', '#B4452F', '#D4A24C', '#8B6B9E', '#1F8C6C',
+  '#2D5F7E', '#3A7A9A', '#4E9BB5', '#6BB8D0', '#8CD4E8'
+],
         borderColor: '#1E293B',
         borderWidth: 2,
       }]
@@ -399,18 +403,18 @@ function renderGraficoMensal(meses, entradas, saidas) {
     data: {
       labels: meses,
       datasets: [
-        { label: 'Entradas', data: entradas, backgroundColor: '#10B981', borderColor: '#10B981', borderWidth: 1 },
-        { label: 'Saídas', data: saidas, backgroundColor: '#F87171', borderColor: '#F87171', borderWidth: 1 }
+        { label: 'Entradas', data: entradas, backgroundColor: '#1A8CA5', borderColor: '#1A8CA5', borderWidth: 1 },
+        { label: 'Saídas', data: saidas, backgroundColor: '#B4452F', borderColor: '#B4452F', borderWidth: 1 }
       ]
     },
     options: {
       responsive: true,
       plugins: {
-        legend: { labels: { color: '#94A3B8', font: { size: 11 } } }
+        legend: { labels: { color: '#3A4A5E', font: { size: 11 } } }
       },
       scales: {
-        x: { ticks: { color: '#94A3B8' }, grid: { color: '#334155' } },
-        y: { ticks: { color: '#94A3B8', callback: v => 'R$' + v }, grid: { color: '#334155' } }
+        x: { ticks: { color: '#3A4A5E' }, grid: { color: 'rgba(13,34,56,0.10)' } },
+        y: { ticks: { color: '#3A4A5E', callback: v => 'R$' + v }, grid: { color: 'rgba(13,34,56,0.10)' } }
       }
     }
   });
