@@ -114,8 +114,14 @@
       </div>
     </div>
 
+    <!-- Health Score financeiro -->
+    <div id="healthScoreBox" class="health-score-box"></div>
+
     <!-- Alertas de vencimento -->
     <div id="vencimentosAlert" style="margin-bottom: 1.5rem;"></div>
+
+    <!-- Sugestões inteligentes (recorrência detectada automaticamente) -->
+    <div id="sugestoesInteligentes"></div>
 
     <!-- Orçamento por categoria -->
     <div class="section-title">Orçamento por Categoria (mês atual)</div>
@@ -145,19 +151,27 @@
   <!-- PAGE LANÇAMENTOS -->
   <div class="page" id="page-lancamentos">
     <div class="filters-bar">
-      <input type="text" id="filtroBusca" class="input-filter" placeholder="🔍 Buscar...">
+      <input type="text" id="filtroBusca" class="input-filter" placeholder="🔍 Buscar (descrição ou #tag)...">
       <select id="filtroTipo" class="input-filter">
         <option value="">Todos os tipos</option>
         <option value="entrada">Entrada</option>
         <option value="saida">Saída</option>
       </select>
-      <select id="filtroCategoria" class="input-filter" id="filtroCategoria"></select>
+      <select id="filtroCategoria" class="input-filter"></select>
       <input type="date" id="filtroDataInicio" class="input-filter">
       <input type="date" id="filtroDataFim" class="input-filter">
       <button class="btn btn-ghost" id="btnLimparFiltros">Limpar Filtros</button>
       <button class="btn btn-outline" id="btnExportar">⬇ Exportar</button>
     </div>
+    <!-- Alternância de modo de exibição -->
+    <div class="view-mode-toggle" id="viewModeToggle">
+      <button class="view-mode-btn active" data-view="lista">☰ Lista</button>
+      <button class="view-mode-btn" data-view="calendario">📅 Calendário</button>
+      <button class="view-mode-btn" data-view="kanban">📋 Kanban</button>
+    </div>
     <div id="listaLancamentos" class="lancamentos-list"></div>
+    <div id="calendarioLancamentos" class="calendario-grid" style="display:none;"></div>
+    <div id="kanbanLancamentos" class="kanban-board" style="display:none;"></div>
   </div>
 
   <!-- PAGE CARTÕES -->
@@ -176,6 +190,7 @@
       <select id="filtroMesFatura" class="input-filter"></select>
     </div>
     <div id="resumoFatura" class="fatura-resumo"></div>
+    <div id="faturaReconciliacao"></div>
     <div id="listaFatura" class="lancamentos-list"></div>
   </div>
 
@@ -251,6 +266,7 @@
         <div class="form-group">
           <label>Categoria *</label>
           <select id="lancCategoria" class="input"></select>
+          <span id="lancCategoriaSugestao" class="campo-sugestao" style="display:none;"></span>
         </div>
         <div class="form-group">
           <label>Data *</label>
@@ -288,6 +304,10 @@
             </select>
           </div>
         </div>
+      </div>
+      <div class="form-group">
+        <label>Tags (opcional)</label>
+        <input type="text" id="lancTags" class="input" placeholder="Ex: viagem-praia, reembolsável (separe por vírgula)">
       </div>
       <div class="form-group">
         <label>Observações</label>
@@ -453,14 +473,34 @@
   </div>
 </div>
 
+<!-- Modal Aporte (substitui prompt() nativo) -->
+<div class="modal-overlay" id="modalAporte">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="modalAporteTitulo">Adicionar Aporte</h2>
+      <button class="modal-close" data-modal="modalAporte">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Valor do aporte (R$) *</label>
+        <input type="number" id="aporteValor" class="input" placeholder="0,00" step="0.01" min="0" inputmode="decimal">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modalAporte">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmarAporte">Adicionar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast" class="toast"></div>
 
-<!-- Confirm Dialog -->
+<!-- Confirm Dialog (genérico, usado no lugar de confirm() nativo) -->
 <div class="modal-overlay" id="modalConfirm">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <h2>Confirmar Exclusão</h2>
+      <h2 id="confirmTitulo">Confirmar Exclusão</h2>
     </div>
     <div class="modal-body">
       <p id="confirmMsg">Tem certeza que deseja excluir este item?</p>

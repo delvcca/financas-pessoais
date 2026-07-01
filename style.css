@@ -329,19 +329,37 @@ a {
   border-color: #9E3A28;
 }
 .btn-icon {
-  padding: .4rem;
+  /* Alvo de toque minimo recomendado (Apple HIG / Material Design): 44x44px */
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   border: none;
+  font-size: 1.1rem;
+  -webkit-tap-highlight-color: transparent;
 }
-.btn-icon:hover {
+.btn-icon:hover,
+.btn-icon:active {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
 .btn-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   fill: currentColor;
+}
+/* Espacamento entre botoes de acao para evitar toques acidentais no vizinho */
+.lanc-actions,
+.cartao-actions,
+.meta-actions {
+  display: flex;
+  gap: .35rem;
 }
 
 /* ===================== SUMMARY CARDS ===================== */
@@ -1103,4 +1121,239 @@ a {
   .metas-grid {
     grid-template-columns: 1fr;
   }
+}
+/* ==========================================
+   HEALTH SCORE FINANCEIRO
+========================================== */
+.health-score-box {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.health-score-gauge {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: #fff;
+}
+.health-score-gauge.score-otimo { background: var(--accent-green); }
+.health-score-gauge.score-bom { background: var(--teal-3); }
+.health-score-gauge.score-atencao { background: var(--accent-amber); }
+.health-score-gauge.score-critico { background: var(--accent-red); }
+.health-score-info { flex: 1; min-width: 0; }
+.health-score-titulo {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: .25rem;
+}
+.health-score-detalhe {
+  font-size: .8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ==========================================
+   SUGESTÕES INTELIGENTES (auto-detecção de recorrência etc.)
+========================================== */
+.sugestao-card {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--accent-blue);
+  border-radius: var(--radius-lg);
+  padding: .85rem 1rem;
+  margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+.sugestao-icone { font-size: 1.3rem; flex-shrink: 0; }
+.sugestao-texto { flex: 1; min-width: 200px; font-size: .85rem; color: var(--text-secondary); }
+.sugestao-texto strong { color: var(--text-primary); }
+.sugestao-acoes { display: flex; gap: .5rem; }
+
+/* ==========================================
+   DICA DE CAMPO (auto-categorização etc.)
+========================================== */
+.campo-sugestao {
+  display: block;
+  font-size: .72rem;
+  color: var(--accent-blue);
+  margin-top: .3rem;
+  cursor: pointer;
+}
+.campo-sugestao:hover { text-decoration: underline; }
+
+/* ==========================================
+   ALTERNÂNCIA DE MODO DE EXIBIÇÃO (lista/calendário/kanban)
+========================================== */
+.view-mode-toggle {
+  display: flex;
+  gap: .4rem;
+  margin-bottom: 1rem;
+}
+.view-mode-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: .5rem .9rem;
+  font-size: .8rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  min-height: 44px;
+}
+.view-mode-btn.active {
+  background: var(--accent-blue);
+  color: #fff;
+  border-color: var(--accent-blue);
+}
+
+/* ==========================================
+   VISÃO CALENDÁRIO
+========================================== */
+.calendario-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: .35rem;
+}
+.calendario-dia-cabecalho {
+  text-align: center;
+  font-size: .7rem;
+  color: var(--text-muted);
+  padding: .25rem 0;
+}
+.calendario-dia {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  padding: .35rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  min-height: 56px;
+}
+.calendario-dia.vazio { visibility: hidden; }
+.calendario-dia.tem-gasto-leve { background: rgba(180, 69, 47, 0.08); }
+.calendario-dia.tem-gasto-medio { background: rgba(180, 69, 47, 0.18); }
+.calendario-dia.tem-gasto-alto { background: rgba(180, 69, 47, 0.32); }
+.calendario-dia.selecionado { border-color: var(--accent-blue); border-width: 2px; }
+.calendario-dia-num { font-size: .75rem; font-weight: 600; color: var(--text-primary); }
+.calendario-dia-valor { font-size: .65rem; font-family: var(--mono); color: var(--accent-red); }
+
+/* ==========================================
+   VISÃO KANBAN (por categoria)
+========================================== */
+.kanban-board {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: .5rem;
+  -webkit-overflow-scrolling: touch;
+}
+.kanban-coluna {
+  flex: 0 0 260px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  padding: .75rem;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+.kanban-coluna-header {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: .6rem;
+  display: flex;
+  justify-content: space-between;
+}
+.kanban-coluna-total { font-family: var(--mono); color: var(--accent-red); font-size: .75rem; }
+.kanban-cards { overflow-y: auto; display: flex; flex-direction: column; gap: .5rem; }
+.kanban-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: .55rem .65rem;
+  font-size: .78rem;
+}
+.kanban-card-desc { font-weight: 500; color: var(--text-primary); margin-bottom: .15rem; }
+.kanban-card-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: .7rem; }
+
+/* ==========================================
+   TAGS LIVRES
+========================================== */
+.lanc-tags { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .2rem; }
+.lanc-tag-chip {
+  background: var(--bg-elevated);
+  color: var(--accent-blue);
+  border-radius: 999px;
+  padding: .1rem .55rem;
+  font-size: .65rem;
+  font-family: var(--mono);
+}
+
+/* ==========================================
+   RECONCILIAÇÃO DE FATURA
+========================================== */
+.fatura-reconciliacao-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .75rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.fatura-reconciliacao-status { font-size: .82rem; color: var(--text-secondary); }
+.fatura-reconciliacao-status.paga { color: var(--accent-green); font-weight: 600; }
+
+/* ==========================================
+   GESTOS DE SWIPE (mobile) — substituem parte do uso dos botões pequenos
+========================================== */
+.lancamento-item {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.lancamento-item-conteudo {
+  display: contents;
+  transition: transform .15s ease-out;
+}
+.lancamento-item.arrastando .lancamento-item-conteudo {
+  transition: none;
+}
+.swipe-fundo {
+  position: absolute;
+  top: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 1.1rem;
+  font-size: 1.2rem;
+  color: #fff;
+  z-index: 0;
+}
+.swipe-fundo-editar { left: 0; background: var(--accent-blue); }
+.swipe-fundo-excluir { right: 0; background: var(--accent-red); }
+
+@media (max-width: 480px) {
+  .health-score-box { flex-direction: column; align-items: flex-start; }
+  .kanban-coluna { flex-basis: 220px; }
 }

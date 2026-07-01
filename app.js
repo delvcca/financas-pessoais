@@ -5,6 +5,7 @@ const AppState = {
   lancamentos: [],
   cartoes: [],
   categorias: [],
+  categoriaIcones: {}, // nome da categoria -> emoji (campo que antes era capturado e descartado)
   orcamentos: {}, // categoria -> limite mensal (number)
   metas: [], // { id, nome, valorAlvo, valorAtual, prazo, dataCriacao }
   filtros: { tipo: '', categoria: '', dataInicio: '', dataFim: '', texto: '' },
@@ -20,6 +21,7 @@ function salvarDados() {
   localStorage.setItem('fc_lancamentos', JSON.stringify(AppState.lancamentos));
   localStorage.setItem('fc_cartoes', JSON.stringify(AppState.cartoes));
   localStorage.setItem('fc_categorias', JSON.stringify(AppState.categorias));
+  localStorage.setItem('fc_categoria_icones', JSON.stringify(AppState.categoriaIcones));
   localStorage.setItem('fc_orcamentos', JSON.stringify(AppState.orcamentos));
   localStorage.setItem('fc_metas', JSON.stringify(AppState.metas));
 }
@@ -29,6 +31,7 @@ function carregarDados() {
   AppState.cartoes = JSON.parse(localStorage.getItem('fc_cartoes') || '[]');
   const cats = JSON.parse(localStorage.getItem('fc_categorias'));
   AppState.categorias = (cats && cats.length) ? cats : [...CATEGORIAS_PADRAO];
+  AppState.categoriaIcones = JSON.parse(localStorage.getItem('fc_categoria_icones') || '{}');
   AppState.orcamentos = JSON.parse(localStorage.getItem('fc_orcamentos') || '{}');
   const metas = JSON.parse(localStorage.getItem('fc_metas') || '[]');
   // Garantir que todas as metas tenham valorAtual
@@ -70,6 +73,72 @@ function toast(msg, tipo = 'success') {
   t.className = 'toast show ' + tipo;
   clearTimeout(t._timeout);
   t._timeout = setTimeout(() => t.className = 'toast', 3000);
+}
+
+// ==========================================
+// DIÁLOGOS CUSTOMIZADOS (substituem confirm()/prompt() nativos)
+// ==========================================
+// confirmarAcao: retorna uma Promise<boolean>. Usa o modal #modalConfirm já existente no HTML,
+// mantendo a identidade visual do app em vez do confirm() nativo do navegador.
+function confirmarAcao(mensagem, opcoes = {}) {
+  const { titulo = 'Confirmar', textoBotao = 'Confirmar', perigoso = true } = opcoes;
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modalConfirm');
+    document.getElementById('confirmTitulo').textContent = titulo;
+    document.getElementById('confirmMsg').textContent = mensagem;
+    const btnOk = document.getElementById('confirmOk');
+    const btnCancel = document.getElementById('confirmCancel');
+    btnOk.textContent = textoBotao;
+    btnOk.className = perigoso ? 'btn btn-danger' : 'btn btn-primary';
+
+    function limpar(resultado) {
+      modal.classList.remove('active');
+      btnOk.removeEventListener('click', onOk);
+      btnCancel.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlay);
+      resolve(resultado);
+    }
+    function onOk() { limpar(true); }
+    function onCancel() { limpar(false); }
+    function onOverlay(e) { if (e.target === modal) limpar(false); }
+
+    btnOk.addEventListener('click', onOk);
+    btnCancel.addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlay);
+    modal.classList.add('active');
+  });
+}
+
+// pedirAporte: substitui prompt() nativo por modal customizado para adicionar valor a uma meta.
+function pedirAporte(nomeMeta) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modalAporte');
+    document.getElementById('modalAporteTitulo').textContent = `Adicionar aporte: ${nomeMeta}`;
+    const input = document.getElementById('aporteValor');
+    input.value = '';
+    const btnOk = document.getElementById('btnConfirmarAporte');
+
+    function limpar(resultado) {
+      modal.classList.remove('active');
+      btnOk.removeEventListener('click', onOk);
+      modal.removeEventListener('click', onOverlay);
+      resolve(resultado);
+    }
+    function onOk() {
+      const valor = parseFloat(input.value);
+      if (isNaN(valor) || valor <= 0) {
+        toast('Informe um valor válido', 'error');
+        return;
+      }
+      limpar(valor);
+    }
+    function onOverlay(e) { if (e.target === modal) limpar(null); }
+
+    btnOk.addEventListener('click', onOk);
+    modal.addEventListener('click', onOverlay);
+    modal.classList.add('active');
+    setTimeout(() => input.focus(), 50);
+  });
 }
 
 // ==========================================
@@ -198,6 +267,186 @@ function getLimiteUtilizadoCartao(cartaoId) {
 }
 
 // ==========================================
+// HEALTH SCORE FINANCEIRO
+// ==========================================
+// Combina taxa de poupança do mês, % de orçamentos não estourados e progresso médio
+// das metas num indicador único de 0 a 100, exibido como "cartão de visita" do dashboard.
+function calcularHealthScore(mesAtual) {
+  const lancsMes = AppState.lancamentos.filter(l => l.data && l.data.startsWith(mesAtual));
+  let entradas = 0, saidas = 0;
+  lancsMes.forEach(l => { if (l.tipo === 'entrada') entradas += l.valor; else saidas += l.valor; });
+
+  // 1) Taxa de poupança (0-100): quanto da renda sobra no fim do mês
+  let notaPoupanca = 50; // neutro quando não há entradas suficientes para avaliar
+  if (entradas > 0) {
+    const taxa = (entradas - saidas) / entradas; // pode ser negativo
+    notaPoupanca = Math.max(0, Math.min(100, (taxa + 0.2) / 0.5 * 100)); // -20% a +30% mapeado em 0-100
+  }
+
+  // 2) Orçamentos: % de categorias com limite definido que NÃO estouraram
+  const gastos = getGastosPorCategoria(mesAtual);
+  const categoriasComLimite = Object.keys(AppState.orcamentos).filter(c => AppState.orcamentos[c] > 0);
+  let notaOrcamento = 70; // neutro quando não há orçamento configurado
+  if (categoriasComLimite.length > 0) {
+    const dentroDoLimite = categoriasComLimite.filter(c => (gastos[c] || 0) <= AppState.orcamentos[c]).length;
+    notaOrcamento = (dentroDoLimite / categoriasComLimite.length) * 100;
+  }
+
+  // 3) Progresso médio das metas ativas
+  let notaMetas = 70; // neutro quando não há metas
+  if (AppState.metas.length > 0) {
+    const progressoMedio = AppState.metas.reduce((s, m) => {
+      return s + Math.min(100, (m.valorAtual / m.valorAlvo) * 100 || 0);
+    }, 0) / AppState.metas.length;
+    notaMetas = progressoMedio;
+  }
+
+  const score = Math.round(notaPoupanca * 0.5 + notaOrcamento * 0.3 + notaMetas * 0.2);
+  let classe, rotulo;
+  if (score >= 80) { classe = 'score-otimo'; rotulo = 'Ótimo'; }
+  else if (score >= 60) { classe = 'score-bom'; rotulo = 'Bom'; }
+  else if (score >= 40) { classe = 'score-atencao'; rotulo = 'Atenção'; }
+  else { classe = 'score-critico'; rotulo = 'Crítico'; }
+
+  return { score: Math.max(0, Math.min(100, score)), classe, rotulo, notaPoupanca, notaOrcamento, notaMetas };
+}
+
+function renderHealthScore(mesAtual) {
+  const box = document.getElementById('healthScoreBox');
+  if (!box) return;
+  const h = calcularHealthScore(mesAtual);
+  box.innerHTML = `
+    <div class="health-score-gauge ${h.classe}">${h.score}</div>
+    <div class="health-score-info">
+      <div class="health-score-titulo">Saúde financeira do mês: ${h.rotulo}</div>
+      <div class="health-score-detalhe">
+        Combina taxa de poupança, controle de orçamento e progresso das metas.
+        Poupança: ${Math.round(h.notaPoupanca)}/100 · Orçamento: ${Math.round(h.notaOrcamento)}/100 · Metas: ${Math.round(h.notaMetas)}/100
+      </div>
+    </div>
+  `;
+}
+
+// ==========================================
+// SUGESTÃO DE ORÇAMENTO (média dos últimos 3 meses)
+// ==========================================
+function getMediaGastoUltimosMeses(categoria, nMeses = 3) {
+  const hoje = new Date();
+  let soma = 0, mesesComDados = 0;
+  for (let i = 1; i <= nMeses; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const mes = d.toISOString().substring(0, 7);
+    const gastos = getGastosPorCategoria(mes);
+    if (gastos[categoria]) {
+      soma += gastos[categoria];
+      mesesComDados++;
+    }
+  }
+  return mesesComDados > 0 ? soma / mesesComDados : 0;
+}
+
+// ==========================================
+// DETECÇÃO AUTOMÁTICA DE RECORRÊNCIA
+// ==========================================
+function normalizarDescricao(desc) {
+  return (desc || '').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// Analisa lançamentos manuais (não recorrentes, não parcelados) e detecta despesas que se
+// repetem com valor parecido (±15%) em pelo menos 3 meses distintos — sinal forte de assinatura
+// ou despesa fixa que o usuário ainda não marcou como recorrente.
+function detectarPossiveisRecorrentes() {
+  const candidatos = AppState.lancamentos.filter(l => l.tipo === 'saida' && !l.recorrente && !l.ehParcela);
+  const grupos = {};
+  candidatos.forEach(l => {
+    const chave = normalizarDescricao(l.descricao);
+    if (!chave) return;
+    if (!grupos[chave]) grupos[chave] = [];
+    grupos[chave].push(l);
+  });
+
+  const dismissed = JSON.parse(localStorage.getItem('fc_recorrencia_dismissed') || '[]');
+  const sugestoes = [];
+  for (const chave in grupos) {
+    const itens = grupos[chave];
+    const mesesUnicos = new Set(itens.map(l => l.data && l.data.substring(0, 7)));
+    if (mesesUnicos.size < 3) continue;
+    if (dismissed.includes(chave)) continue;
+    const valores = itens.map(l => l.valor);
+    const media = valores.reduce((a, b) => a + b, 0) / valores.length;
+    const dentroDaFaixa = valores.every(v => Math.abs(v - media) / media <= 0.15);
+    if (!dentroDaFaixa) continue;
+    const maisRecente = [...itens].sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
+    sugestoes.push({ chave, descricao: maisRecente.descricao, categoria: maisRecente.categoria, valorMedio: media, ocorrencias: mesesUnicos.size });
+  }
+  return sugestoes;
+}
+
+function renderSugestoesInteligentes() {
+  const container = document.getElementById('sugestoesInteligentes');
+  if (!container) return;
+  const sugestoes = detectarPossiveisRecorrentes();
+  if (sugestoes.length === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = sugestoes.map(s => `
+    <div class="sugestao-card">
+      <span class="sugestao-icone">🔁</span>
+      <div class="sugestao-texto">
+        Isso parece uma assinatura: <strong>${s.descricao}</strong> apareceu em ${s.ocorrencias} meses,
+        sempre por volta de ${formatarMoeda(s.valorMedio)}. Quer transformar em recorrente?
+      </div>
+      <div class="sugestao-acoes">
+        <button class="btn btn-primary" style="padding:.45rem .8rem;font-size:.78rem;" onclick="aceitarSugestaoRecorrente('${s.chave}', '${s.descricao.replace(/'/g, "\\'")}', '${s.categoria}', ${s.valorMedio})">Transformar</button>
+        <button class="btn btn-ghost" style="padding:.45rem .8rem;font-size:.78rem;" onclick="dispensarSugestaoRecorrente('${s.chave}')">Dispensar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function aceitarSugestaoRecorrente(chave, descricao, categoria, valorMedio) {
+  dispensarSugestaoRecorrente(chave, false);
+  abrirModalRecorrente();
+  document.getElementById('recDescricao').value = descricao;
+  document.getElementById('recValor').value = valorMedio.toFixed(2);
+  preencherSelectCategoria('recCategoria', categoria);
+  document.getElementById('recCategoria').value = categoria;
+  toast('Confira os dados e clique em Salvar para confirmar a recorrência');
+}
+
+function dispensarSugestaoRecorrente(chave, atualizarTela = true) {
+  const dismissed = JSON.parse(localStorage.getItem('fc_recorrencia_dismissed') || '[]');
+  if (!dismissed.includes(chave)) dismissed.push(chave);
+  localStorage.setItem('fc_recorrencia_dismissed', JSON.stringify(dismissed));
+  if (atualizarTela) renderSugestoesInteligentes();
+}
+
+// ==========================================
+// AUTO-CATEGORIZAÇÃO POR HISTÓRICO
+// ==========================================
+// Constrói um mapa "palavra da descrição -> categoria mais frequente" a partir do histórico
+// de lançamentos já cadastrados. Não é IA real — é frequência simples, suficiente para o caso de uso.
+function sugerirCategoria(descricaoDigitada) {
+  const chaveDigitada = normalizarDescricao(descricaoDigitada);
+  if (!chaveDigitada || chaveDigitada.length < 3) return null;
+
+  const contagem = {}; // categoria -> ocorrências entre os lançamentos com descrição parecida
+  AppState.lancamentos.forEach(l => {
+    if (!l.categoria) return;
+    const chaveExistente = normalizarDescricao(l.descricao);
+    if (!chaveExistente) return;
+    // correspondência por substring em qualquer direção (ex: "uber" casa com "uber eats")
+    if (chaveExistente.includes(chaveDigitada) || chaveDigitada.includes(chaveExistente)) {
+      contagem[l.categoria] = (contagem[l.categoria] || 0) + 1;
+    }
+  });
+
+  let melhorCategoria = null, melhorContagem = 0;
+  for (const cat in contagem) {
+    if (contagem[cat] > melhorContagem) { melhorCategoria = cat; melhorContagem = contagem[cat]; }
+  }
+  return melhorContagem >= 1 ? melhorCategoria : null;
+}
+
+// ==========================================
 // DASHBOARD
 // ==========================================
 function atualizarDashboard() {
@@ -218,6 +467,9 @@ function atualizarDashboard() {
   document.getElementById('entradasMes').textContent = `Mês ${nomeMes(mesAtual.split('-')[1])}`;
   document.getElementById('totalSaidas').textContent = formatarMoeda(saidas);
   document.getElementById('saidasMes').textContent = `Mês ${nomeMes(mesAtual.split('-')[1])}`;
+
+  renderHealthScore(mesAtual);
+  renderSugestoesInteligentes();
 
   let totalFatura = 0;
   AppState.lancamentos.filter(l => l.cartaoId && l.data && l.data.startsWith(mesAtual)).forEach(l => totalFatura += l.valor);
@@ -280,17 +532,29 @@ function atualizarDashboard() {
   }
 
   // --- Alertas de vencimento ---
-  const hojeNum = parseInt(hoje.split('-')[2]);
+  // Antes: assumia meses de 30 dias e nunca resetava _notificados (cartão notificado uma vez
+  // nunca mais alertava, nem no mês seguinte). Agora calcula a próxima data de vencimento real
+  // e reseta o registro de notificação por dia.
+  const hojeDate = new Date(hoje + 'T00:00:00');
   const alertDiv = document.getElementById('vencimentosAlert');
   let alertHtml = '';
+  if (!window._notificados || window._notificadosData !== hoje) {
+    // novo dia: reseta o controle de notificações já enviadas
+    window._notificados = {};
+    window._notificadosData = hoje;
+  }
   AppState.cartoes.forEach(c => {
     const venc = c.vencimento;
-    let diff = venc - hojeNum;
-    if (diff < 0) diff += 30;
+    // calcula a próxima ocorrência real do dia de vencimento (lida corretamente com
+    // meses de 28/29/30/31 dias e viradas de ano)
+    let proxVenc = new Date(hojeDate.getFullYear(), hojeDate.getMonth(), venc);
+    if (proxVenc < hojeDate) {
+      proxVenc = new Date(hojeDate.getFullYear(), hojeDate.getMonth() + 1, venc);
+    }
+    const diff = Math.round((proxVenc - hojeDate) / 86400000);
     if (diff >= 0 && diff <= 5) {
       const msg = `💳 ${c.nome} vence em ${diff === 0 ? 'hoje!' : `${diff} dias`}`;
       alertHtml += `<div class="vencimento-alerta"><span class="emoji">⏰</span> ${msg}</div>`;
-      if (!window._notificados) window._notificados = {};
       if (!window._notificados[c.id]) {
         enviarNotificacao('Vencimento próximo', msg);
         window._notificados[c.id] = true;
@@ -430,7 +694,17 @@ function getLancamentosFiltrados() {
     if (f.categoria && l.categoria !== f.categoria) return false;
     if (f.dataInicio && l.data < f.dataInicio) return false;
     if (f.dataFim && l.data > f.dataFim) return false;
-    if (f.texto && !l.descricao.toLowerCase().includes(f.texto.toLowerCase())) return false;
+    if (f.texto) {
+      const termo = f.texto.toLowerCase().trim();
+      if (termo.startsWith('#')) {
+        // busca por tag: "#viagem" casa com a tag "viagem-praia" também (substring)
+        const tagBuscada = termo.substring(1);
+        const tags = (l.tags || []).map(t => t.toLowerCase());
+        if (!tags.some(t => t.includes(tagBuscada))) return false;
+      } else if (!l.descricao.toLowerCase().includes(termo)) {
+        return false;
+      }
+    }
     return true;
   }).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 }
@@ -443,28 +717,39 @@ function atualizarLancamentos() {
   const container = document.getElementById('listaLancamentos');
   if (lista.length === 0) {
     container.innerHTML = '<div class="empty-state"><p>Nenhum lançamento encontrado</p></div>';
-    return;
-  }
-  container.innerHTML = lista.map(l => {
-    const cartaoNome = l.cartaoId ? (AppState.cartoes.find(c => c.id === l.cartaoId)?.nome || '') : '';
-    return `
-      <div class="lancamento-item">
-        <div class="lanc-tipo-icon ${l.tipo === 'entrada' ? 'tipo-entrada' : 'tipo-saida'}">
-          ${l.tipo === 'entrada' ? '↑' : '↓'}
-        </div>
-        <div class="lanc-info">
-          <div class="lanc-desc">${l.descricao}${l.parcelas ? ` <span class="lanc-tag">${l.parcelaAtual}/${l.parcelas}x</span>` : ''}${l.recorrente ? ' <span class="lanc-tag">↺</span>' : ''}</div>
-          <div class="lanc-meta">${formatarData(l.data)} · ${l.categoria}${cartaoNome ? ` · 💳 ${cartaoNome}` : ''}</div>
-        </div>
-        <div class="lanc-valor ${l.tipo}">${l.tipo === 'entrada' ? '+' : '-'}${formatarMoeda(l.valor)}</div>
-        <div class="lanc-actions">
-          <button class="btn-icon" onclick="editarLancamento('${l.id}')" title="Editar">✏️</button>
-          <button class="btn-icon" onclick="excluirLancamento('${l.id}')" title="Excluir">🗑️</button>
+  } else {
+    container.innerHTML = lista.map(l => {
+      const cartaoNome = l.cartaoId ? (AppState.cartoes.find(c => c.id === l.cartaoId)?.nome || '') : '';
+      const tagsHtml = (l.tags && l.tags.length)
+        ? `<div class="lanc-tags">${l.tags.map(t => `<span class="lanc-tag-chip">#${t}</span>`).join('')}</div>`
+        : '';
+      return `
+      <div class="lancamento-item" data-id="${l.id}">
+        <div class="swipe-fundo swipe-fundo-editar">✏️ Editar</div>
+        <div class="swipe-fundo swipe-fundo-excluir">🗑️ Excluir</div>
+        <div class="lancamento-item-conteudo">
+          <div class="lanc-tipo-icon ${l.tipo === 'entrada' ? 'tipo-entrada' : 'tipo-saida'}">
+            ${l.tipo === 'entrada' ? '↑' : '↓'}
+          </div>
+          <div class="lanc-info">
+            <div class="lanc-desc">${l.descricao}${l.parcelas ? ` <span class="lanc-tag">${l.parcelaAtual}/${l.parcelas}x</span>` : ''}${l.recorrente ? ' <span class="lanc-tag">↺</span>' : ''}</div>
+            <div class="lanc-meta">${formatarData(l.data)} · ${l.categoria}${cartaoNome ? ` · 💳 ${cartaoNome}` : ''}</div>
+            ${tagsHtml}
+          </div>
+          <div class="lanc-valor ${l.tipo}">${l.tipo === 'entrada' ? '+' : '-'}${formatarMoeda(l.valor)}</div>
+          <div class="lanc-actions">
+            <button class="btn-icon" onclick="editarLancamento('${l.id}')" title="Editar">✏️</button>
+            <button class="btn-icon" onclick="excluirLancamento('${l.id}')" title="Excluir">🗑️</button>
+          </div>
         </div>
       </div>
     `;
-  }).join('');
+    }).join('');
+    ativarGestosSwipe(container);
+  }
   preencherSelectCategoria('filtroCategoria', AppState.filtros.categoria);
+  renderCalendarioLancamentos();
+  renderKanbanLancamentos();
 }
 
 function preencherSelectCategoria(id, selected = '') {
@@ -472,6 +757,155 @@ function preencherSelectCategoria(id, selected = '') {
   if (!sel) return;
   sel.innerHTML = `<option value="">Todas as categorias</option>` +
     AppState.categorias.map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
+}
+
+// ==========================================
+// MODOS DE EXIBIÇÃO ALTERNATIVOS (Lista / Calendário / Kanban)
+// ==========================================
+let modoExibicaoLancamentos = 'lista';
+
+function trocarModoExibicao(modo) {
+  modoExibicaoLancamentos = modo;
+  document.querySelectorAll('.view-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === modo);
+  });
+  document.getElementById('listaLancamentos').style.display = modo === 'lista' ? '' : 'none';
+  document.getElementById('calendarioLancamentos').style.display = modo === 'calendario' ? '' : 'none';
+  document.getElementById('kanbanLancamentos').style.display = modo === 'kanban' ? '' : 'none';
+}
+
+// Visão calendário: mostra o mês corrente (baseado no filtro de data, se houver, senão hoje)
+// com intensidade de cor proporcional ao total gasto em cada dia.
+function renderCalendarioLancamentos() {
+  const container = document.getElementById('calendarioLancamentos');
+  if (!container) return;
+  const refDataStr = AppState.filtros.dataInicio || dataHoje();
+  const ref = new Date(refDataStr + 'T00:00:00');
+  const ano = ref.getFullYear(), mes = ref.getMonth();
+  const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
+  const totalDias = new Date(ano, mes + 1, 0).getDate();
+
+  const gastosPorDia = {};
+  let maxGastoDia = 0;
+  getLancamentosFiltrados().forEach(l => {
+    if (l.tipo !== 'saida' || !l.data) return;
+    const d = new Date(l.data + 'T00:00:00');
+    if (d.getFullYear() !== ano || d.getMonth() !== mes) return;
+    const dia = d.getDate();
+    gastosPorDia[dia] = (gastosPorDia[dia] || 0) + l.valor;
+    if (gastosPorDia[dia] > maxGastoDia) maxGastoDia = gastosPorDia[dia];
+  });
+
+  const cabecalhos = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(d => `<div class="calendario-dia-cabecalho">${d}</div>`).join('');
+  const vazios = Array.from({ length: primeiroDiaSemana }, () => `<div class="calendario-dia vazio"></div>`).join('');
+  const dias = Array.from({ length: totalDias }, (_, i) => {
+    const dia = i + 1;
+    const gasto = gastosPorDia[dia] || 0;
+    let classeIntensidade = '';
+    if (maxGastoDia > 0 && gasto > 0) {
+      const pct = gasto / maxGastoDia;
+      classeIntensidade = pct >= 0.66 ? 'tem-gasto-alto' : pct >= 0.33 ? 'tem-gasto-medio' : 'tem-gasto-leve';
+    }
+    const dataStr = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    return `
+      <div class="calendario-dia ${classeIntensidade}" onclick="aplicarFiltro('dataInicio','${dataStr}');aplicarFiltro('dataFim','${dataStr}');trocarModoExibicao('lista');document.getElementById('filtroDataInicio').value='${dataStr}';document.getElementById('filtroDataFim').value='${dataStr}';">
+        <span class="calendario-dia-num">${dia}</span>
+        ${gasto > 0 ? `<span class="calendario-dia-valor">${formatarMoeda(gasto)}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = cabecalhos + vazios + dias;
+}
+
+// Visão kanban: uma coluna por categoria (das categorias presentes nos lançamentos filtrados),
+// útil para comparar volume de gasto entre categorias de forma visual.
+function renderKanbanLancamentos() {
+  const container = document.getElementById('kanbanLancamentos');
+  if (!container) return;
+  const lista = getLancamentosFiltrados().filter(l => l.tipo === 'saida');
+  const porCategoria = {};
+  lista.forEach(l => {
+    if (!porCategoria[l.categoria]) porCategoria[l.categoria] = [];
+    porCategoria[l.categoria].push(l);
+  });
+  const categoriasOrdenadas = Object.keys(porCategoria).sort((a, b) => {
+    const totalA = porCategoria[a].reduce((s, l) => s + l.valor, 0);
+    const totalB = porCategoria[b].reduce((s, l) => s + l.valor, 0);
+    return totalB - totalA;
+  });
+
+  if (categoriasOrdenadas.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>Nenhum gasto para exibir no Kanban</p></div>';
+    return;
+  }
+
+  container.innerHTML = categoriasOrdenadas.map(cat => {
+    const itens = [...porCategoria[cat]].sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+    const total = itens.reduce((s, l) => s + l.valor, 0);
+    const icone = AppState.categoriaIcones[cat] || '📌';
+    return `
+      <div class="kanban-coluna">
+        <div class="kanban-coluna-header">
+          <span>${icone} ${cat}</span>
+          <span class="kanban-coluna-total">${formatarMoeda(total)}</span>
+        </div>
+        <div class="kanban-cards">
+          ${itens.map(l => `
+            <div class="kanban-card">
+              <div class="kanban-card-desc">${l.descricao}</div>
+              <div class="kanban-card-meta">
+                <span>${formatarData(l.data)}</span>
+                <span>${formatarMoeda(l.valor)}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ==========================================
+// GESTOS DE SWIPE (mobile) — swipe-left exclui, swipe-right edita
+// ==========================================
+// Alternativa tátil aos botões pequenos de editar/excluir, mais natural em touch.
+// Usa Pointer Events (funciona tanto para touch quanto mouse) sem nenhuma lib externa.
+function ativarGestosSwipe(container) {
+  container.querySelectorAll('.lancamento-item').forEach(item => {
+    const conteudo = item.querySelector('.lancamento-item-conteudo');
+    const id = item.dataset.id;
+    let startX = 0, currentX = 0, arrastando = false;
+    const LIMIAR_ACAO = 90; // px necessários para disparar a ação
+
+    item.addEventListener('pointerdown', (e) => {
+      startX = e.clientX;
+      arrastando = true;
+      item.classList.add('arrastando');
+    });
+    item.addEventListener('pointermove', (e) => {
+      if (!arrastando) return;
+      currentX = e.clientX - startX;
+      // limita o arraste visual para não "sumir" a linha inteira
+      const limitado = Math.max(-120, Math.min(120, currentX));
+      conteudo.style.transform = `translateX(${limitado}px)`;
+    });
+    function finalizar() {
+      if (!arrastando) return;
+      arrastando = false;
+      item.classList.remove('arrastando');
+      conteudo.style.transform = '';
+      if (currentX <= -LIMIAR_ACAO) {
+        excluirLancamento(id);
+      } else if (currentX >= LIMIAR_ACAO) {
+        editarLancamento(id);
+      }
+      currentX = 0;
+    }
+    item.addEventListener('pointerup', finalizar);
+    item.addEventListener('pointercancel', finalizar);
+    item.addEventListener('pointerleave', () => { if (arrastando) finalizar(); });
+  });
 }
 
 // ==========================================
@@ -494,7 +928,7 @@ function atualizarCartoes() {
         </div>
         <div class="cartao-meta">
           <span>Limite: ${formatarMoeda(c.limite)}</span>
-          <span>Usado: ${formatarMoeda(utilizado)} (${pct}%)</span>
+          <span title="Compras parceladas reservam o valor total das parcelas restantes no limite, não apenas a parcela do mês">Usado: ${formatarMoeda(utilizado)} (${pct}%) ℹ️</span>
         </div>
         <div class="cartao-meta" style="margin-top:.4rem;">
           <span>Vencimento: dia ${c.vencimento}</span>
@@ -512,6 +946,98 @@ function atualizarCartoes() {
 // ==========================================
 // FATURAS
 // ==========================================
+// ==========================================
+// RECONCILIAÇÃO DE FATURA
+// ==========================================
+// Guarda quais faturas (cartaoId + mês) já foram marcadas como pagas.
+// Chave: "cartaoId|AAAA-MM" -> { pago: true, lancamentoId: '...' }
+function getFaturasPagas() {
+  return JSON.parse(localStorage.getItem('fc_faturas_pagas') || '{}');
+}
+function salvarFaturasPagas(obj) {
+  localStorage.setItem('fc_faturas_pagas', JSON.stringify(obj));
+}
+
+function renderReconciliacaoFatura(cartaoId, mesSelecionado, totalFatura) {
+  const container = document.getElementById('faturaReconciliacao');
+  if (!container) return;
+
+  if (!cartaoId) {
+    container.innerHTML = `<div class="fatura-reconciliacao-box">
+      <span class="fatura-reconciliacao-status">Selecione um cartão específico para poder marcar a fatura como paga.</span>
+    </div>`;
+    return;
+  }
+
+  const chave = `${cartaoId}|${mesSelecionado}`;
+  const pagas = getFaturasPagas();
+  const jaPaga = pagas[chave];
+  const cartao = AppState.cartoes.find(c => c.id === cartaoId);
+
+  if (jaPaga) {
+    container.innerHTML = `<div class="fatura-reconciliacao-box">
+      <span class="fatura-reconciliacao-status paga">✅ Fatura de ${cartao ? cartao.nome : ''} já foi marcada como paga em ${formatarData(jaPaga.pagoEm.substring(0,10))}.</span>
+      <button class="btn btn-ghost" onclick="desfazerFaturaPaga('${chave}')">Desfazer</button>
+    </div>`;
+  } else {
+    container.innerHTML = `<div class="fatura-reconciliacao-box">
+      <span class="fatura-reconciliacao-status">Fatura ainda não conciliada. Ao confirmar, será criado um lançamento de saída de ${formatarMoeda(totalFatura)} na categoria "Cartão de Crédito".</span>
+      <button class="btn btn-primary" ${totalFatura <= 0 ? 'disabled' : ''} onclick="marcarFaturaPaga('${cartaoId}', '${mesSelecionado}', ${totalFatura})">✔ Marcar fatura como paga</button>
+    </div>`;
+  }
+}
+
+async function marcarFaturaPaga(cartaoId, mesSelecionado, totalFatura) {
+  const cartao = AppState.cartoes.find(c => c.id === cartaoId);
+  const ok = await confirmarAcao(
+    `Confirmar pagamento da fatura de ${cartao ? cartao.nome : 'cartão'} (${nomeMes(mesSelecionado.split('-')[1])}/${mesSelecionado.split('-')[0]}) no valor de ${formatarMoeda(totalFatura)}? Um lançamento de saída será criado.`,
+    { titulo: 'Marcar fatura como paga', textoBotao: 'Confirmar pagamento', perigoso: false }
+  );
+  if (!ok) return;
+
+  // Garante que a categoria "Cartão de Crédito" existe, para não gerar lançamento órfão
+  if (!AppState.categorias.includes('Cartão de Crédito')) {
+    AppState.categorias.push('Cartão de Crédito');
+  }
+  const lancamentoId = gerarId();
+  AppState.lancamentos.push({
+    id: lancamentoId,
+    descricao: `Pagamento fatura ${cartao ? cartao.nome : ''} - ${nomeMes(mesSelecionado.split('-')[1])}/${mesSelecionado.split('-')[0]}`,
+    valor: totalFatura,
+    data: dataHoje(),
+    tipo: 'saida',
+    categoria: 'Cartão de Crédito',
+    obs: 'Gerado automaticamente pela reconciliação de fatura',
+    tags: [],
+    criadoEm: new Date().toISOString(),
+  });
+
+  const pagas = getFaturasPagas();
+  pagas[`${cartaoId}|${mesSelecionado}`] = { pago: true, lancamentoId, pagoEm: new Date().toISOString() };
+  salvarFaturasPagas(pagas);
+
+  salvarDados();
+  toast('Fatura marcada como paga!');
+  atualizarFaturas();
+}
+
+async function desfazerFaturaPaga(chave) {
+  const pagas = getFaturasPagas();
+  const registro = pagas[chave];
+  if (!registro) return;
+  const ok = await confirmarAcao(
+    'Desfazer a conciliação irá remover o lançamento de pagamento gerado automaticamente. Continuar?',
+    { titulo: 'Desfazer conciliação', textoBotao: 'Desfazer' }
+  );
+  if (!ok) return;
+  AppState.lancamentos = AppState.lancamentos.filter(l => l.id !== registro.lancamentoId);
+  delete pagas[chave];
+  salvarFaturasPagas(pagas);
+  salvarDados();
+  toast('Conciliação desfeita');
+  atualizarFaturas();
+}
+
 function atualizarFaturas() {
   const cartaoId = document.getElementById('filtroCartaoFatura')?.value || '';
   const mesSelecionado = document.getElementById('filtroMesFatura')?.value || dataHoje().substring(0, 7);
@@ -554,6 +1080,8 @@ function atualizarFaturas() {
       </div>
     `;
   }
+
+  renderReconciliacaoFatura(cartaoId, mesSelecionado, totalFatura);
 
   const containerLista = document.getElementById('listaFatura');
   if (lancsFatura.length === 0) {
@@ -607,9 +1135,13 @@ function atualizarRecorrentes() {
   `).join('');
 }
 
-function excluirGrupo(grupoId) {
+async function excluirGrupo(grupoId) {
   const grupo = AppState.lancamentos.filter(l => l.grupoId === grupoId);
-  if (!confirm(`Excluir ${grupo.length} lançamentos deste grupo recorrente?`)) return;
+  const ok = await confirmarAcao(`Excluir ${grupo.length} lançamentos deste grupo recorrente?`, {
+    titulo: 'Excluir grupo recorrente',
+    textoBotao: 'Excluir grupo'
+  });
+  if (!ok) return;
   AppState.lancamentos = AppState.lancamentos.filter(l => l.grupoId !== grupoId);
   salvarDados();
   toast('Grupo excluído!');
@@ -669,9 +1201,21 @@ function atualizarCategorias() {
   const container = document.getElementById('listaCategorias');
   container.innerHTML = AppState.categorias.map(c => {
     const limite = AppState.orcamentos[c] || '';
+    const icone = AppState.categoriaIcones[c] || '📌';
+    // Sugestão de orçamento: só exibida quando a categoria ainda não tem limite definido
+    // e há histórico de gasto suficiente para calcular uma média confiável.
+    let sugestaoHtml = '';
+    if (!limite) {
+      const media = getMediaGastoUltimosMeses(c, 3);
+      if (media > 0) {
+        sugestaoHtml = `<span class="campo-sugestao" onclick="aplicarSugestaoOrcamento('${c}', ${media.toFixed(2)})">
+          💡 Sugestão: ${formatarMoeda(media)} (média dos últimos 3 meses) — clique para aplicar
+        </span>`;
+      }
+    }
     return `
       <div class="categoria-card">
-        <div class="cat-icone">📌</div>
+        <div class="cat-icone">${icone}</div>
         <div class="cat-info">
           <div class="cat-nome">${c}</div>
           <div style="display:flex;align-items:center;gap:.5rem;margin-top:.2rem;">
@@ -679,11 +1223,19 @@ function atualizarCategorias() {
             <input type="number" class="cat-limite-input" value="${limite}" step="0.01" min="0"
               data-categoria="${c}" onchange="salvarLimiteCategoria(this)" placeholder="R$">
           </div>
+          ${sugestaoHtml}
         </div>
         <button class="btn-icon cat-del" onclick="excluirCategoria('${c}')" title="Excluir">🗑️</button>
       </div>
     `;
   }).join('');
+}
+
+function aplicarSugestaoOrcamento(categoria, valor) {
+  AppState.orcamentos[categoria] = valor;
+  salvarDados();
+  toast(`Limite de ${formatarMoeda(valor)} aplicado para ${categoria}`);
+  atualizarCategorias();
 }
 
 function salvarLimiteCategoria(input) {
@@ -700,13 +1252,17 @@ function salvarLimiteCategoria(input) {
 
 function adicionarCategoria() {
   const input = document.getElementById('catNome');
+  const inputIcone = document.getElementById('catIcone');
   const nome = input.value.trim();
+  const icone = inputIcone.value.trim();
   if (!nome) { toast('Digite um nome', 'error'); return; }
   if (AppState.categorias.includes(nome)) { toast('Categoria já existe', 'error'); return; }
   AppState.categorias.push(nome);
+  if (icone) AppState.categoriaIcones[nome] = icone;
   salvarDados();
   toast('Categoria adicionada!');
   input.value = '';
+  inputIcone.value = '';
   fecharModal('modalCategoria');
   atualizarCategorias();
   preencherSelectCategoria('filtroCategoria', AppState.filtros.categoria);
@@ -714,10 +1270,12 @@ function adicionarCategoria() {
   preencherSelectCategoria('recCategoria', '');
 }
 
-function excluirCategoria(nome) {
-  if (!confirm(`Excluir categoria "${nome}"?`)) return;
+async function excluirCategoria(nome) {
+  const ok = await confirmarAcao(`Excluir categoria "${nome}"?`, { titulo: 'Excluir categoria' });
+  if (!ok) return;
   AppState.categorias = AppState.categorias.filter(c => c !== nome);
   delete AppState.orcamentos[nome];
+  delete AppState.categoriaIcones[nome];
   salvarDados();
   toast('Categoria excluída!');
   atualizarCategorias();
@@ -756,16 +1314,11 @@ function atualizarMetas() {
   }).join('');
 }
 
-function adicionarAporte(id) {
+async function adicionarAporte(id) {
   const meta = AppState.metas.find(m => m.id === id);
   if (!meta) return;
-  const valorStr = prompt(`Quanto deseja aportar para "${meta.nome}"?`, '0,00');
-  if (valorStr === null) return;
-  const valor = parseFloat(valorStr.replace(',', '.')) || 0;
-  if (valor <= 0) {
-    toast('Valor inválido', 'error');
-    return;
-  }
+  const valor = await pedirAporte(meta.nome);
+  if (valor === null) return; // cancelado
   meta.valorAtual = (meta.valorAtual || 0) + valor;
   salvarDados();
   toast(`Aporte de ${formatarMoeda(valor)} adicionado!`);
@@ -825,8 +1378,9 @@ function salvarMeta() {
   atualizarPagina('metas');
 }
 
-function excluirMeta(id) {
-  if (!confirm('Excluir esta meta?')) return;
+async function excluirMeta(id) {
+  const ok = await confirmarAcao('Excluir esta meta?', { titulo: 'Excluir meta' });
+  if (!ok) return;
   AppState.metas = AppState.metas.filter(m => m.id !== id);
   salvarDados();
   toast('Meta excluída!');
@@ -856,6 +1410,8 @@ function abrirModalLancamento(id = null) {
     document.getElementById('lancCategoria').value = l.categoria;
     document.getElementById('lancData').value = l.data;
     document.getElementById('lancObs').value = l.obs || '';
+    document.getElementById('lancTags').value = (l.tags || []).join(', ');
+    document.getElementById('lancCategoriaSugestao').style.display = 'none';
     document.getElementById('lancCartaoCheck').checked = !!l.cartaoId;
     if (l.cartaoId) {
       document.getElementById('lancCartao').value = l.cartaoId;
@@ -872,13 +1428,15 @@ function abrirModalLancamento(id = null) {
     document.getElementById('lancCategoria').value = '';
     document.getElementById('lancData').value = dataHoje();
     document.getElementById('lancObs').value = '';
+    document.getElementById('lancTags').value = '';
+    document.getElementById('lancCategoriaSugestao').style.display = 'none';
     document.getElementById('lancCartaoCheck').checked = false;
     document.getElementById('cartaoFields').style.display = 'none';
     document.getElementById('lancParcelas').value = '1';
   }
-  document.getElementById('lancCartaoCheck').addEventListener('change', function() {
-    document.getElementById('cartaoFields').style.display = this.checked ? 'block' : 'none';
-  });
+  // O listener de 'change' do checkbox de cartão foi movido para inicializar(),
+  // pois aqui ele era re-adicionado a cada abertura do modal, empilhando handlers
+  // duplicados (mesmo handler disparando N vezes após N aberturas do modal).
 }
 
 function abrirModalRecorrente(id = null) {
@@ -919,7 +1477,7 @@ function fecharModal(id) {
 // ==========================================
 // SALVAR LANÇAMENTO
 // ==========================================
-function salvarLancamento() {
+async function salvarLancamento() {
   const id = document.getElementById('lancamentoId').value;
   const descricao = document.getElementById('lancDescricao').value.trim();
   const valor = parseFloat(document.getElementById('lancValor').value);
@@ -927,6 +1485,12 @@ function salvarLancamento() {
   const tipo = document.getElementById('lancTipo').value;
   const categoria = document.getElementById('lancCategoria').value;
   const obs = document.getElementById('lancObs').value.trim();
+  // Tags livres: usuário digita separadas por vírgula (ex: "viagem-praia, reembolsável").
+  // Normalizamos removendo espaços e entradas vazias.
+  const tags = document.getElementById('lancTags').value
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
   const cartaoCheck = document.getElementById('lancCartaoCheck').checked;
   const cartaoId = cartaoCheck ? document.getElementById('lancCartao').value : null;
   const parcelas = cartaoCheck ? parseInt(document.getElementById('lancParcelas').value) : 1;
@@ -939,7 +1503,18 @@ function salvarLancamento() {
   if (id) {
     const idx = AppState.lancamentos.findIndex(l => l.id === id);
     if (idx >= 0) {
-      AppState.lancamentos[idx] = { ...AppState.lancamentos[idx], descricao, valor, data, tipo, categoria, obs, cartaoId };
+      const original = AppState.lancamentos[idx];
+      // Aviso de consistência: editar uma parcela isolada NÃO recalcula as demais parcelas
+      // do mesmo grupo (valor, datas). Antes essa alteração acontecia silenciosamente.
+      if (original.ehParcela && original.grupoId) {
+        const ok = await confirmarAcao(
+          `"${original.descricao}" é a parcela ${original.parcelaAtual}/${original.parcelas} de um parcelamento. ` +
+          `Esta edição altera apenas esta parcela — as demais (${original.parcelas - 1} restantes) NÃO serão recalculadas. Continuar?`,
+          { titulo: 'Editar parcela individual', textoBotao: 'Editar só esta', perigoso: false }
+        );
+        if (!ok) return;
+      }
+      AppState.lancamentos[idx] = { ...original, descricao, valor, data, tipo, categoria, obs, cartaoId, tags, atualizadoEm: new Date().toISOString() };
       salvarDados();
       toast('Lançamento atualizado!');
     }
@@ -953,20 +1528,22 @@ function salvarLancamento() {
           descricao: `${descricao} (${i+1}/${parcelas})`,
           valor: valorParcela,
           data: adicionarMeses(data, i),
-          tipo, categoria, obs,
+          tipo, categoria, obs, tags,
           cartaoId,
           parcelas,
           parcelaAtual: i + 1,
           grupoId,
           ehParcela: true,
+          criadoEm: new Date().toISOString(),
         });
       }
       toast(`${parcelas} parcelas criadas!`);
     } else {
       AppState.lancamentos.push({
         id: gerarId(),
-        descricao, valor, data, tipo, categoria, obs,
+        descricao, valor, data, tipo, categoria, obs, tags,
         cartaoId: cartaoId || null,
+        criadoEm: new Date().toISOString(),
       });
       toast('Lançamento adicionado!');
     }
@@ -980,7 +1557,7 @@ function salvarLancamento() {
 // ==========================================
 // SALVAR RECORRENTE (limite 60 ocorrências)
 // ==========================================
-function salvarRecorrente() {
+async function salvarRecorrente() {
   const id = document.getElementById('recorrenteId').value;
   const descricao = document.getElementById('recDescricao').value.trim();
   const valor = parseFloat(document.getElementById('recValor').value);
@@ -999,7 +1576,11 @@ function salvarRecorrente() {
   if (id) {
     const antigos = AppState.lancamentos.filter(l => l.grupoId === id && l.recorrente);
     if (antigos.length) {
-      if (!confirm(`Editar este grupo recorrente irá substituir os ${antigos.length} lançamentos existentes. Continuar?`)) return;
+      const ok = await confirmarAcao(
+        `Editar este grupo recorrente irá substituir os ${antigos.length} lançamentos existentes. Continuar?`,
+        { titulo: 'Editar grupo recorrente', textoBotao: 'Substituir' }
+      );
+      if (!ok) return;
       AppState.lancamentos = AppState.lancamentos.filter(l => l.grupoId !== id || !l.recorrente);
     }
   }
@@ -1031,7 +1612,7 @@ function salvarRecorrente() {
   }
 
   if (count === maxIter) {
-    toast(`Limite de ${maxIter} ocorrências atingido`, 'error');
+    toast(`Foram criadas as primeiras ${maxIter} ocorrências (limite por lançamento). Repita a operação mais tarde para continuar a série.`, 'error');
   } else {
     toast(`${count} lançamentos recorrentes criados!`);
   }
@@ -1045,18 +1626,30 @@ function editarLancamento(id) {
   abrirModalLancamento(id);
 }
 
-function excluirLancamento(id) {
+async function excluirLancamento(id) {
   const l = AppState.lancamentos.find(x => x.id === id);
   if (!l) return;
-  if (!confirm(`Excluir "${l.descricao}"?`)) return;
+
   if (l.grupoId) {
     const grupo = AppState.lancamentos.filter(x => x.grupoId === l.grupoId);
-    if (grupo.length > 1 && !confirm(`Este lançamento faz parte de um grupo (${grupo.length} itens). Deseja excluir todos?`)) {
-      return;
+    // Mensagens diferentes para parcela de cartão x lançamento recorrente, para o usuário
+    // entender exatamente o que está prestes a apagar.
+    const tipoGrupo = l.ehParcela ? 'parcelamento' : 'lançamento recorrente';
+    if (grupo.length > 1) {
+      const ok = await confirmarAcao(
+        `"${l.descricao}" faz parte de um ${tipoGrupo} (${grupo.length} ${l.ehParcela ? 'parcelas' : 'ocorrências'}). Deseja excluir todos os itens deste grupo?`,
+        { titulo: `Excluir ${tipoGrupo}`, textoBotao: 'Excluir todos' }
+      );
+      if (!ok) return;
+    } else {
+      const ok = await confirmarAcao(`Excluir "${l.descricao}"?`, { titulo: 'Excluir lançamento' });
+      if (!ok) return;
     }
     AppState.lancamentos = AppState.lancamentos.filter(x => x.grupoId !== l.grupoId);
-    toast('Grupo excluído!');
+    toast(l.ehParcela ? 'Parcelamento excluído!' : 'Grupo excluído!');
   } else {
+    const ok = await confirmarAcao(`Excluir "${l.descricao}"?`, { titulo: 'Excluir lançamento' });
+    if (!ok) return;
     AppState.lancamentos = AppState.lancamentos.filter(x => x.id !== id);
     toast('Lançamento excluído!');
   }
@@ -1104,10 +1697,13 @@ function editarCartao(id) {
   document.getElementById('cartaoFechamento').value = c.fechamento || '';
 }
 
-function excluirCartao(id) {
+async function excluirCartao(id) {
   const c = AppState.cartoes.find(x => x.id === id);
   if (!c) return;
-  if (!confirm(`Excluir cartão "${c.nome}"? Os lançamentos associados serão mantidos.`)) return;
+  const ok = await confirmarAcao(`Excluir cartão "${c.nome}"? Os lançamentos associados serão mantidos.`, {
+    titulo: 'Excluir cartão'
+  });
+  if (!ok) return;
   AppState.cartoes = AppState.cartoes.filter(x => x.id !== id);
   AppState.lancamentos.forEach(l => { if (l.cartaoId === id) l.cartaoId = null; });
   salvarDados();
@@ -1221,6 +1817,31 @@ function inicializar() {
   });
 
   document.getElementById('btnNovoLancamento').addEventListener('click', () => abrirModalLancamento());
+  // Listener do checkbox "Pago no cartão de crédito" — adicionado uma única vez aqui
+  // (antes era adicionado repetidamente em abrirModalLancamento, empilhando handlers duplicados).
+  document.getElementById('lancCartaoCheck').addEventListener('change', function() {
+    document.getElementById('cartaoFields').style.display = this.checked ? 'block' : 'none';
+  });
+  // Auto-categorização: ao digitar a descrição, sugere a categoria mais usada em lançamentos
+  // parecidos. Só preenche automaticamente se o campo de categoria ainda estiver vazio
+  // (não sobrescreve escolha manual do usuário).
+  document.getElementById('lancDescricao').addEventListener('input', function() {
+    const dica = document.getElementById('lancCategoriaSugestao');
+    const sugestao = sugerirCategoria(this.value);
+    if (!sugestao) { dica.style.display = 'none'; return; }
+    const catSelect = document.getElementById('lancCategoria');
+    if (!catSelect.value) {
+      catSelect.value = sugestao;
+      dica.textContent = `💡 Categoria "${sugestao}" preenchida automaticamente com base no histórico`;
+      dica.style.display = 'block';
+    } else if (catSelect.value !== sugestao) {
+      dica.textContent = `💡 Baseado no histórico, "${sugestao}" também poderia ser a categoria certa`;
+      dica.style.display = 'block';
+      dica.onclick = () => { catSelect.value = sugestao; dica.style.display = 'none'; };
+    } else {
+      dica.style.display = 'none';
+    }
+  });
   document.getElementById('btnNovoCartao').addEventListener('click', () => {
     document.getElementById('modalCartaoTitulo').textContent = 'Novo Cartão';
     document.getElementById('cartaoId').value = '';
@@ -1233,6 +1854,7 @@ function inicializar() {
   document.getElementById('btnNovoRecorrente').addEventListener('click', () => abrirModalRecorrente());
   document.getElementById('btnNovaCategoria').addEventListener('click', () => {
     document.getElementById('catNome').value = '';
+    document.getElementById('catIcone').value = '';
     document.getElementById('modalCategoria').classList.add('active');
   });
   document.getElementById('btnNovaMeta').addEventListener('click', () => abrirModalMeta());
@@ -1249,11 +1871,25 @@ function inicializar() {
     });
   });
 
-  document.getElementById('btnSalvarLancamento').addEventListener('click', salvarLancamento);
-  document.getElementById('btnSalvarCartao').addEventListener('click', salvarCartao);
-  document.getElementById('btnSalvarCategoria').addEventListener('click', adicionarCategoria);
-  document.getElementById('btnSalvarRecorrente').addEventListener('click', salvarRecorrente);
-  document.getElementById('btnSalvarMeta').addEventListener('click', salvarMeta);
+  // Proteção contra duplo clique: desabilita o botão durante a execução da ação
+  // e reabilita ao final, mesmo que a função seja assíncrona (ex: aguarda confirmação).
+  function comProtecaoDuploClique(fn) {
+    return async function(...args) {
+      const btn = this;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      try {
+        await fn.apply(this, args);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
+  document.getElementById('btnSalvarLancamento').addEventListener('click', comProtecaoDuploClique(salvarLancamento));
+  document.getElementById('btnSalvarCartao').addEventListener('click', comProtecaoDuploClique(salvarCartao));
+  document.getElementById('btnSalvarCategoria').addEventListener('click', comProtecaoDuploClique(adicionarCategoria));
+  document.getElementById('btnSalvarRecorrente').addEventListener('click', comProtecaoDuploClique(salvarRecorrente));
+  document.getElementById('btnSalvarMeta').addEventListener('click', comProtecaoDuploClique(salvarMeta));
 
   document.getElementById('filtroBusca').addEventListener('input', function() {
     aplicarFiltro('texto', this.value);
@@ -1280,6 +1916,10 @@ function inicializar() {
 
   document.getElementById('filtroCartaoFatura')?.addEventListener('change', atualizarFaturas);
   document.getElementById('filtroMesFatura')?.addEventListener('change', atualizarFaturas);
+
+  document.querySelectorAll('.view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => trocarModoExibicao(btn.dataset.view));
+  });
 
   navegarPara('dashboard');
 }
